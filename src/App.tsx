@@ -29,7 +29,12 @@ import { apiService } from './services/apiService';
 import { webhookHandler } from './services/webhookHandler';
 import { CURRENCY_RATES, createCurrencyFormatter } from './lib/format';
 import { evaluatePortfolio } from './services/recommendationEngine';
-import { fixtureCollections, hasFixtureData, initialProvenance } from './lib/config';
+import {
+  fixtureCollections,
+  hasFixtureData,
+  initialProvenance,
+  isSupabaseConfigured,
+} from './lib/config';
 import { AlertTriangle, Zap } from 'lucide-react';
 
 /**
@@ -72,7 +77,7 @@ export const App: React.FC = () => {
    * Where each collection's data actually came from. Only a successful
    * backend fetch may move a collection to 'live'.
    */
-  const [provenance] = useState(initialProvenance);
+  const [provenance, setProvenance] = useState(initialProvenance);
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [toast, setToast] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
@@ -101,6 +106,38 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     apiService.getAuditLogs().then(setAuditLogs).catch(() => setAuditLogs([]));
+  }, []);
+
+  /**
+   * Attempt a real read on mount and record what actually came back.
+   *
+   * Three outcomes, all reported honestly:
+   *   - no backend configured        -> stays 'demo'
+   *   - configured but read failed   -> 'degraded' (creds exist, data does not)
+   *   - real rows returned           -> 'live'
+   *
+   * The middle case is the one that used to lie: credentials alone were
+   * enough to hide the demo banner even when the database was empty or the
+   * schema had never been applied.
+   */
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let cancelled = false;
+
+    apiService
+      .getPortfolios()
+      .then(({ data, degraded }) => {
+        if (cancelled) return;
+        setProvenance((p) => ({ ...p, portfolios: degraded ? 'degraded' : 'live' }));
+        if (!degraded) setPortfolios(data);
+      })
+      .catch(() => {
+        if (!cancelled) setProvenance((p) => ({ ...p, portfolios: 'degraded' }));
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /**
