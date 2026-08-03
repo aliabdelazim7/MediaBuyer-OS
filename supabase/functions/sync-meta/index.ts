@@ -79,6 +79,40 @@ const META_STATUS: Record<string, string> = {
   DELETED: 'paused',
 };
 
+/**
+ * The client-side key for this project.
+ *
+ * SUPABASE_ANON_KEY is marked deprecated in favour of
+ * SUPABASE_PUBLISHABLE_KEYS, a JSON dictionary. Both are read so the
+ * function keeps working on projects issued either way, rather than failing
+ * at runtime once the legacy variable is withdrawn.
+ *
+ * Note this key grants nothing on its own — the caller's JWT is what
+ * authorises the reads and writes below, and RLS still applies.
+ */
+function publishableKey(): string {
+  const legacy = Deno.env.get('SUPABASE_ANON_KEY');
+  if (legacy) return legacy;
+
+  const raw = Deno.env.get('SUPABASE_PUBLISHABLE_KEYS');
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      const first = Array.isArray(parsed)
+        ? parsed.find((v) => typeof v === 'string')
+        : Object.values(parsed).find((v) => typeof v === 'string');
+      if (typeof first === 'string') return first;
+    } catch {
+      // Not JSON — some projects expose it as a bare string.
+      return raw;
+    }
+  }
+
+  throw new Error(
+    'No publishable key available (checked SUPABASE_ANON_KEY and SUPABASE_PUBLISHABLE_KEYS)',
+  );
+}
+
 async function metaFetch<T>(path: string, params: Record<string, string>, token: string): Promise<T> {
   const url = new URL(`${GRAPH}/${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
@@ -116,11 +150,9 @@ Deno.serve(async (req: Request) => {
     // to the same RLS policies the browser is. The service_role key is
     // deliberately not used: a bug here must not be able to cross tenants.
     const { createClient } = await import('jsr:@supabase/supabase-js@2');
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
+    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, publishableKey(), {
+      global: { headers: { Authorization: authHeader } },
+    });
 
     const { data: userData, error: userErr } = await supabase.auth.getUser();
     if (userErr || !userData.user) return json({ error: 'Not authenticated' }, 401);
