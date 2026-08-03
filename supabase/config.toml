@@ -1,0 +1,15 @@
+# Supabase project configuration.
+#
+# Only what the CLI needs to deploy the Edge Function. Local-development
+# services (db, studio, realtime) are intentionally not configured: the
+# project runs against the hosted instance, and declaring local ports here
+# would imply a local stack that does not exist.
+
+project_id = "sxkvkqufraracgszhbfm"
+
+[functions.sync-meta]
+# The function verifies the caller's JWT itself and uses it for every
+# database write, so RLS still applies. Leaving JWT verification on means an
+# unauthenticated request is rejected at the edge, before it can reach the
+# Meta token.
+verify_jwt = true
