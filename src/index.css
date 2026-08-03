@@ -6,6 +6,58 @@
   background-color: #020617;
   color: #f8fafc;
   direction: rtl;
+
+  /* Emerald-400. Chosen over the emerald-500 brand tone because the focus
+     ring must clear 3:1 against BOTH slate-900 and slate-950 surfaces. */
+  --focus-ring: #34d399;
+}
+
+/*
+ * Keyboard focus baseline.
+ *
+ * Every input, select and textarea in this app carried Tailwind's
+ * `outline-none` with no replacement, and the project contained zero
+ * `focus:` styles — so keyboard users had no visible focus indicator
+ * anywhere. Element+pseudo-class specificity (0,1,1) intentionally beats the
+ * `.outline-none` utility (0,1,0) so those declarations are overridden
+ * without editing ten call sites.
+ *
+ * :focus-visible (not :focus) keeps the ring off mouse clicks.
+ */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+}
+
+/* Inside the scrolling table the offset ring gets clipped by the cell edge. */
+td :focus-visible,
+th :focus-visible {
+  outline-offset: 1px;
+}
+
+/* Skip link — first tab stop, visually hidden until focused. */
+.skip-link {
+  position: absolute;
+  inset-inline-start: 1rem;
+  top: -100%;
+  z-index: 100;
+  padding: 0.625rem 1rem;
+  background: #34d399;
+  color: #020617;
+  font-weight: 700;
+  font-size: 0.875rem;
+  border-radius: 0.75rem;
+  transition: top 150ms ease;
+}
+
+.skip-link:focus {
+  top: 1rem;
 }
 
 body {

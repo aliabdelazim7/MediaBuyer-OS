@@ -93,26 +93,26 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
 
   // Color Coding Evaluator functions based on Portfolio Target Thresholds
   const getRoasStatus = (roas: number) => {
-    if (roas >= portfolio.targetRoas) return { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', tag: 'ممتاز 🟢' };
-    if (roas >= portfolio.targetRoas * 0.8) return { color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30', tag: 'مقبول 🟡' };
-    return { color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/30', tag: 'سيئ 🔴' };
+    if (roas >= portfolio.targetRoas) return { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', tag: 'ممتاز' };
+    if (roas >= portfolio.targetRoas * 0.8) return { color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30', tag: 'مقبول' };
+    return { color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/30', tag: 'سيئ' };
   };
 
   const getCpaStatus = (cpa: number) => {
-    if (cpa <= portfolio.targetCpa) return { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', tag: 'ممتاز 🟢' };
-    if (cpa <= portfolio.targetCpa * 1.25) return { color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30', tag: 'تحذير 🟡' };
-    return { color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/30', tag: 'مرتفع جداً 🔴' };
+    if (cpa <= portfolio.targetCpa) return { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', tag: 'ممتاز' };
+    if (cpa <= portfolio.targetCpa * 1.25) return { color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30', tag: 'تحذير' };
+    return { color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/30', tag: 'مرتفع جداً' };
   };
 
   const getCplStatus = (cpl: number) => {
-    if (cpl <= portfolio.targetCpl) return { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', tag: 'ممتاز 🟢' };
-    if (cpl <= portfolio.targetCpl * 1.3) return { color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30', tag: 'مقبول 🟡' };
-    return { color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/30', tag: 'مرتفع 🔴' };
+    if (cpl <= portfolio.targetCpl) return { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', tag: 'ممتاز' };
+    if (cpl <= portfolio.targetCpl * 1.3) return { color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30', tag: 'مقبول' };
+    return { color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/30', tag: 'مرتفع' };
   };
 
   const getHookStatus = (hook: number) => {
-    if (hook >= portfolio.targetHookRate) return { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', tag: 'قوي 🟢' };
-    return { color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/30', tag: 'ضعيف 🔴' };
+    if (hook >= portfolio.targetHookRate) return { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', tag: 'قوي' };
+    return { color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/30', tag: 'ضعيف' };
   };
 
   const roasStat = getRoasStatus(blendedRoas);
@@ -142,10 +142,14 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
         {/* Action button to expand metrics */}
         <button
           onClick={() => setShowAdvancedMetrics(!showAdvancedMetrics)}
-          className="flex items-center gap-2 text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 px-3.5 py-2 rounded-xl border border-slate-700 transition-all"
+          aria-expanded={showAdvancedMetrics}
+          aria-controls="advanced-metrics"
+          className="flex items-center gap-2 shrink-0 text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 px-3.5 h-11 rounded-xl border border-slate-700 transition-colors cursor-pointer"
         >
           <span>{showAdvancedMetrics ? 'إخفاء المتركس المتقدمة' : 'عرض المتركس المتقدمة (Hook/Hold/CPM)'}</span>
-          {showAdvancedMetrics ? <ChevronUp className="w-4 h-4 text-emerald-400" /> : <ChevronDown className="w-4 h-4 text-emerald-400" />}
+          {showAdvancedMetrics
+            ? <ChevronUp className="w-4 h-4 text-emerald-400" aria-hidden="true" />
+            : <ChevronDown className="w-4 h-4 text-emerald-400" aria-hidden="true" />}
         </button>
       </div>
 
@@ -154,7 +158,9 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
         
         {/* 1. Net Profit (True Cash Profit) */}
         <div className="bg-slate-900/90 border border-slate-800 hover:border-emerald-500/40 p-5 rounded-2xl shadow-md transition-all relative overflow-hidden group">
-          <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-emerald-400 to-teal-500" />
+          {/* Logical `start` so the accent sits on the reading-start edge.
+              `left-0` put it on the trailing edge in this RTL layout. */}
+          <div className="absolute top-0 start-0 w-1.5 h-full bg-gradient-to-b from-emerald-400 to-teal-500" />
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">صافي الربح الحقيقي</span>
             <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center text-emerald-400">
@@ -173,7 +179,7 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
             */}
             <div className="flex items-center gap-2 mt-2 text-xs">
               <span className={`flex items-center font-bold ${netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                <TrendingUp className="w-3.5 h-3.5 ml-0.5" />
+                <TrendingUp className="w-3.5 h-3.5 ms-0.5" aria-hidden="true" />
                 {totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0.0'}%
               </span>
               <span className="text-slate-400">هامش الربح الصافي من الإيراد</span>
@@ -285,7 +291,7 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
               <div className={`text-lg font-extrabold mt-1 ${hookStat.color}`}>
                 {avgHookRate.toFixed(1)}%
               </div>
-              <span className="text-[10px] text-slate-400">الهدف: ≥ {portfolio.targetHookRate}%</span>
+              <span className="text-[11px] text-slate-400">الهدف: ≥ {portfolio.targetHookRate}%</span>
             </div>
 
             {/* Hold Rate */}
@@ -297,7 +303,7 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
               <div className="text-lg font-extrabold text-teal-400 mt-1">
                 {avgHoldRate.toFixed(1)}%
               </div>
-              <span className="text-[10px] text-slate-400">نسبة استكمال الفيديو</span>
+              <span className="text-[11px] text-slate-400">نسبة استكمال الفيديو</span>
             </div>
 
             {/* CTR */}
@@ -306,7 +312,7 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
               <div className="text-lg font-extrabold text-slate-100 mt-1">
                 {avgCtr.toFixed(2)}%
               </div>
-              <span className="text-[10px] text-slate-400">{formatNumber(totalClicks)} نقرة</span>
+              <span className="text-[11px] text-slate-400">{formatNumber(totalClicks)} نقرة</span>
             </div>
 
             {/* CPM */}
@@ -315,7 +321,7 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
               <div className="text-lg font-extrabold text-slate-100 mt-1">
                 {formatCurrency(avgCpm)}
               </div>
-              <span className="text-[10px] text-slate-400">{formatNumber(totalImpressions)} ظهورا</span>
+              <span className="text-[11px] text-slate-400">{formatNumber(totalImpressions)} ظهورا</span>
             </div>
 
             {/* CPC */}
@@ -324,7 +330,7 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
               <div className="text-lg font-extrabold text-slate-100 mt-1">
                 {formatCurrency(avgCpc)}
               </div>
-              <span className="text-[10px] text-slate-400">متوسط النقرة</span>
+              <span className="text-[11px] text-slate-400">متوسط النقرة</span>
             </div>
 
             {/* Active Fatigue Alerts */}
@@ -333,7 +339,7 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
               <div className={`text-lg font-extrabold mt-1 ${fatiguedCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
                 {fatiguedCount} حملة
               </div>
-              <span className="text-[10px] text-amber-400/80">
+              <span className="text-[11px] text-amber-400/80">
                 {fatiguedCount > 0 ? 'تحتاج تغيير الـ Intro' : 'لا توجد تنبيهات إجهاد'}
               </span>
             </div>

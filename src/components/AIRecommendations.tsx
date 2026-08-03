@@ -29,7 +29,7 @@ export const AIRecommendations: React.FC<AIRecommendationsProps> = ({
 
       {recommendations.length === 0 && (
         <div className="py-16 text-center text-sm text-slate-400 border border-dashed border-slate-800 rounded-2xl">
-          لا توجد اقتراحات لهذه المحفظة حالياً — كل الحملات ضمن الحدود المعتمدة. ✅
+          لا توجد اقتراحات لهذه المحفظة حالياً — كل الحملات ضمن الحدود المعتمدة.
         </div>
       )}
 
@@ -56,7 +56,7 @@ export const AIRecommendations: React.FC<AIRecommendationsProps> = ({
                   {rec.title}
                 </span>
                 {rec.applied && (
-                  <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-[10px] font-bold rounded flex items-center gap-1">
+                  <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-[11px] font-bold rounded flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3" /> تم التطبيق
                   </span>
                 )}

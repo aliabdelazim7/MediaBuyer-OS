@@ -207,7 +207,7 @@ export const App: React.FC = () => {
 
         notify(
           ingest.success
-            ? '✅ تم استلام 1 ليد جديد عبر Webhook وتحديث الـ ROAS والـ Net Profit بنجاح!'
+            ? 'تم استلام 1 ليد جديد عبر Webhook وتحديث الـ ROAS والـ Net Profit بنجاح!'
             : `تعذر استلام الليد: ${ingest.message}`,
           ingest.success ? 'info' : 'error',
         );
@@ -243,7 +243,7 @@ export const App: React.FC = () => {
         await refreshAuditLogs();
         notify(
           newStatus === 'closed'
-            ? '🎉 مبروك! تم تأكيد مبيعة جديدة وتحديث أرباح الحملة في الـ Dashboard.'
+            ? 'مبروك! تم تأكيد مبيعة جديدة وتحديث أرباح الحملة في الـ Dashboard.'
             : 'تم تحديث مرحلة الليد في الـ CRM بنجاح.',
         );
       }, 'تعذر تحديث مرحلة الليد.'),
@@ -332,6 +332,9 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500 selection:text-slate-950">
+      {/* First tab stop: lets keyboard users bypass the header's ~15 controls. */}
+      <a href="#main-content" className="skip-link">تخطي إلى المحتوى الرئيسي</a>
+
       {appMode === 'demo' && (
         <div
           role="status"
@@ -349,7 +352,7 @@ export const App: React.FC = () => {
         <div
           role="status"
           aria-live="polite"
-          className={`fixed bottom-5 left-5 z-50 bg-slate-900 border px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 max-w-[90vw] animate-in slide-in-from-bottom ${
+          className={`fixed bottom-5 start-5 z-50 bg-slate-900 border px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 max-w-[90vw] animate-in slide-in-from-bottom ${
             toast.tone === 'error'
               ? 'border-rose-500/50 text-rose-300'
               : 'border-emerald-500/50 text-emerald-300'
@@ -381,7 +384,11 @@ export const App: React.FC = () => {
         recommendationCount={portfolioRecommendations.filter((r) => !r.applied).length}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8 focus:outline-none"
+      >
         {activeTab === 'overview' && (
           <>
             <KPIDashboard
@@ -474,7 +481,8 @@ export const App: React.FC = () => {
         logs={auditLogs}
       />
 
-      <footer className="bg-slate-950 border-t border-slate-900 py-4 text-center text-xs text-slate-500">
+      {/* text-slate-500 on slate-950 is 4.24:1 — below the 4.5:1 minimum. */}
+      <footer className="bg-slate-950 border-t border-slate-900 py-4 text-center text-xs text-slate-400">
         <p>MediaBuyer OS © 2026 | Enterprise Growth Engine for Media Buyers &amp; Agencies</p>
       </footer>
     </div>

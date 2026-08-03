@@ -6,13 +6,17 @@ import {
   Pause,
   Edit2,
   Check,
-  X
+  X,
+  Target
 } from 'lucide-react';
 
+// No emoji: the badge already carries meaning via its Arabic label AND its
+// colour, so the glyph was a third redundant channel that screen readers
+// announce ("green circle") and that renders differently per platform.
 const STATUS_LABEL: Record<Campaign['status'], string> = {
-  active: 'نشطة 🟢',
-  paused: 'متوقفة ⏸️',
-  warning: 'تحذير 🔴',
+  active: 'نشطة',
+  paused: 'متوقفة',
+  warning: 'تحذير',
 };
 
 const STATUS_STYLE: Record<Campaign['status'], string> = {
@@ -23,8 +27,8 @@ const STATUS_STYLE: Record<Campaign['status'], string> = {
 
 const FILTERS: { id: 'all' | 'active' | 'warning'; label: string }[] = [
   { id: 'all', label: 'جميع الحملات' },
-  { id: 'active', label: '🟢 النشطة' },
-  { id: 'warning', label: '🔴 تحظى بتنبيه' },
+  { id: 'active', label: 'النشطة' },
+  { id: 'warning', label: 'تحتاج انتباه' },
 ];
 
 interface CampaignsTableProps {
@@ -83,8 +87,9 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
       {/* Header & Filter Tabs */}
       <div className="p-5 border-b border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h3 className="font-extrabold text-slate-100 text-lg flex items-center gap-2">
-            <span>🎯 جدول تحليل وسلوك الحملات (Campaign Performance Hub)</span>
+          <h3 className="font-extrabold text-slate-100 text-lg flex items-center gap-2 flex-wrap">
+            <Target className="w-5 h-5 text-emerald-400 shrink-0" aria-hidden="true" />
+            <span>جدول تحليل وسلوك الحملات</span>
             <span className="px-2 py-0.5 text-xs bg-slate-800 text-slate-300 rounded-full font-bold">
               {campaigns.length} حملة
             </span>
@@ -99,8 +104,10 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
               key={f.id}
               aria-pressed={filterStatus === f.id}
               onClick={() => setFilterStatus(f.id)}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                filterStatus === f.id ? 'bg-slate-800 text-emerald-400 border border-slate-700' : 'text-slate-400 hover:text-slate-200'
+              className={`px-3 h-9 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+                filterStatus === f.id
+                  ? 'bg-slate-800 text-emerald-400 border border-slate-700'
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
               {f.label}
@@ -111,20 +118,20 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
 
       {/* Campaigns Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-right text-xs">
+        <table className="w-full text-start text-xs">
           <thead className="bg-slate-950/80 text-slate-400 border-b border-slate-800">
             <tr>
-              <th className="p-3.5 font-bold">الحملة والمنصة</th>
-              <th className="p-3.5 font-bold">الحالة</th>
-              <th className="p-3.5 font-bold">الميزانية اليومية</th>
-              <th className="p-3.5 font-bold">الإنفاق</th>
-              <th className="p-3.5 font-bold">الإيراد الحقيقي</th>
-              <th className="p-3.5 font-bold">صافي الربح</th>
-              <th className="p-3.5 font-bold">ROAS</th>
-              <th className="p-3.5 font-bold">CPA</th>
-              <th className="p-3.5 font-bold">CPL</th>
-              <th className="p-3.5 font-bold">Hook Rate (3s)</th>
-              <th className="p-3.5 font-bold">إجراء سريع</th>
+              <th scope="col" className="p-3.5 font-bold">الحملة والمنصة</th>
+              <th scope="col" className="p-3.5 font-bold">الحالة</th>
+              <th scope="col" className="p-3.5 font-bold">الميزانية اليومية</th>
+              <th scope="col" className="p-3.5 font-bold">الإنفاق</th>
+              <th scope="col" className="p-3.5 font-bold">الإيراد الحقيقي</th>
+              <th scope="col" className="p-3.5 font-bold">صافي الربح</th>
+              <th scope="col" className="p-3.5 font-bold">ROAS</th>
+              <th scope="col" className="p-3.5 font-bold">CPA</th>
+              <th scope="col" className="p-3.5 font-bold">CPL</th>
+              <th scope="col" className="p-3.5 font-bold">Hook Rate (3s)</th>
+              <th scope="col" className="p-3.5 font-bold">إجراء سريع</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 text-slate-200">
@@ -177,11 +184,12 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
                           aria-label={`الميزانية اليومية للحملة ${c.name}`}
                           value={tempBudget}
                           onChange={(e) => setTempBudget(Number(e.target.value))}
+                          aria-invalid={!isBudgetValid}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') handleSaveBudget(c.id);
                             if (e.key === 'Escape') setEditingBudgetId(null);
                           }}
-                          className={`w-20 bg-slate-950 border rounded px-1.5 py-1 text-xs font-bold outline-none ${
+                          className={`w-20 h-9 bg-slate-950 border rounded-lg px-2 text-xs font-bold ${
                             isBudgetValid ? 'border-emerald-500 text-emerald-400' : 'border-rose-500 text-rose-400'
                           }`}
                         />
@@ -189,23 +197,23 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
                           onClick={() => handleSaveBudget(c.id)}
                           disabled={!isBudgetValid}
                           aria-label="حفظ الميزانية"
-                          className="p-1 bg-emerald-500 text-slate-950 rounded hover:bg-emerald-400 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed"
+                          className="inline-flex items-center justify-center w-9 h-9 shrink-0 bg-emerald-500 text-slate-950 rounded-lg hover:bg-emerald-400 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors cursor-pointer"
                         >
-                          <Check className="w-3.5 h-3.5" />
+                          <Check className="w-4 h-4" aria-hidden="true" />
                         </button>
                         <button
                           onClick={() => setEditingBudgetId(null)}
                           aria-label="إلغاء التعديل"
-                          className="p-1 bg-slate-800 text-slate-400 rounded hover:bg-slate-700"
+                          className="inline-flex items-center justify-center w-9 h-9 shrink-0 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors cursor-pointer"
                         >
-                          <X className="w-3.5 h-3.5" />
+                          <X className="w-4 h-4" aria-hidden="true" />
                         </button>
                       </div>
                     ) : (
                       <button
                         type="button"
                         aria-label={`تعديل ميزانية الحملة ${c.name}`}
-                        className="flex items-center gap-1.5 font-bold group"
+                        className="flex items-center gap-1.5 font-bold group min-h-9 cursor-pointer hover:text-emerald-400 transition-colors"
                         onClick={() => handleStartBudgetEdit(c)}
                       >
                         <span>{formatCurrency(c.dailyBudget)}/يوم</span>
@@ -275,7 +283,8 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
                   <td className="p-3.5">
                     <button
                       onClick={() => onToggleCampaignStatus(c.id)}
-                      className={`p-1.5 rounded-lg border text-xs font-bold flex items-center gap-1 transition-all ${
+                      aria-label={`${c.status === 'active' ? 'إيقاف' : 'تفعيل'} حملة ${c.name}`}
+                      className={`px-2.5 h-9 rounded-lg border text-xs font-bold inline-flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap ${
                         c.status === 'active'
                           ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/40'
                           : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/30'

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import type { Lead, LeadStatus, Currency } from '../types/mediaBuyer';
 import { createCurrencyFormatter } from '../lib/format';
-import { UserCheck, CheckCircle2, Phone, Mail, UserPlus } from 'lucide-react';
+import { UserCheck, CheckCircle2, Phone, Mail, UserPlus, Inbox, MessageSquare, type LucideIcon } from 'lucide-react';
 
 interface LeadPipelineKanbanProps {
   leads: Lead[];
@@ -11,10 +11,12 @@ interface LeadPipelineKanbanProps {
   onOpenAddLeadModal: () => void;
 }
 
-const COLUMNS: { id: LeadStatus; title: string; badgeColor: string; bg: string }[] = [
-  { id: 'registered', title: '📥 مسجل جديد (Registered)', badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30', bg: 'bg-blue-500/5' },
-  { id: 'qualified', title: '💬 تم المتابعة والتأهيل (Qualified)', badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30', bg: 'bg-amber-500/5' },
-  { id: 'closed', title: '✅ تم البيع والاتفاق (Closed / Done)', badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30', bg: 'bg-emerald-500/5' },
+// Lucide icons rather than emoji: they inherit the column's colour, render
+// identically across platforms, and are hidden from screen readers.
+const COLUMNS: { id: LeadStatus; title: string; icon: LucideIcon; badgeColor: string; bg: string }[] = [
+  { id: 'registered', title: 'مسجل جديد (Registered)', icon: Inbox, badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30', bg: 'bg-blue-500/5' },
+  { id: 'qualified', title: 'تم التأهيل (Qualified)', icon: MessageSquare, badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30', bg: 'bg-amber-500/5' },
+  { id: 'closed', title: 'تم البيع (Closed)', icon: CheckCircle2, badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30', bg: 'bg-emerald-500/5' },
 ];
 
 export const LeadPipelineKanban: React.FC<LeadPipelineKanbanProps> = ({
@@ -57,16 +59,16 @@ export const LeadPipelineKanban: React.FC<LeadPipelineKanbanProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="text-right">
+          <div className="text-start">
             <div className="text-[11px] text-slate-400">إجمالي المبيعات المحققة من الليدز</div>
             <div className="text-lg font-black text-emerald-400">{formatCurrency(totalClosedRevenue)}</div>
           </div>
 
           <button
             onClick={onOpenAddLeadModal}
-            className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3.5 py-2 rounded-xl transition-all shadow-lg shadow-emerald-500/20"
+            className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3.5 h-11 rounded-xl transition-colors shadow-lg shadow-emerald-500/20 cursor-pointer shrink-0"
           >
-            <UserPlus className="w-4 h-4" />
+            <UserPlus className="w-4 h-4" aria-hidden="true" />
             <span>تسجيل ليد جديد</span>
           </button>
         </div>
@@ -76,22 +78,30 @@ export const LeadPipelineKanban: React.FC<LeadPipelineKanbanProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {COLUMNS.map(col => {
           const colLeads = byStatus[col.id];
+          const Icon = col.icon;
 
           return (
-            <div key={col.id} className={`bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3 ${col.bg}`}>
-              
+            <section
+              key={col.id}
+              aria-label={`${col.title} — ${colLeads.length} ليد`}
+              className={`bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3 ${col.bg}`}
+            >
               {/* Column Header */}
-              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${col.badgeColor}`}>
-                  {col.title}
+              <div className="flex items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border min-w-0 ${col.badgeColor}`}>
+                  <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  <span className="truncate">{col.title}</span>
                 </span>
-                <span className="w-6 h-6 rounded-full bg-slate-800 text-slate-200 text-xs font-bold flex items-center justify-center">
+                <span className="w-6 h-6 shrink-0 rounded-full bg-slate-800 text-slate-200 text-xs font-bold flex items-center justify-center">
                   {colLeads.length}
                 </span>
               </div>
 
-              {/* Lead Cards List */}
-              <div className="space-y-3 min-h-[400px]">
+              {/*
+                The fixed 400px floor was fine side-by-side on desktop but
+                stacked on mobile it produced 1200px of mostly-empty scroll.
+              */}
+              <div className="space-y-3 md:min-h-[400px]">
                 {colLeads.length === 0 ? (
                   <div className="h-40 flex items-center justify-center text-xs text-slate-400 border border-dashed border-slate-800 rounded-xl">
                     لا توجد ليدز في هذه المرحلة حالياً
@@ -107,7 +117,7 @@ export const LeadPipelineKanban: React.FC<LeadPipelineKanbanProps> = ({
                           <h4 className="font-bold text-slate-100 text-sm">{lead.name}</h4>
                           <span className="text-[11px] text-slate-400">الحملة: {lead.campaignName}</span>
                         </div>
-                        <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-mono">
+                        <span className="text-[11px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-mono">
                           {lead.sourcePlatform.toUpperCase()}
                         </span>
                       </div>
@@ -144,25 +154,28 @@ export const LeadPipelineKanban: React.FC<LeadPipelineKanbanProps> = ({
                         {lead.status === 'registered' && (
                           <button
                             onClick={() => onUpdateLeadStatus(lead.id, 'qualified')}
-                            className="w-full py-1.5 bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all"
+                            aria-label={`نقل ${lead.name} إلى مرحلة التأهيل`}
+                            className="w-full min-h-11 bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                           >
-                            <span>تخطي إلى Qualified 💬</span>
+                            <MessageSquare className="w-3.5 h-3.5" aria-hidden="true" />
+                            <span>نقل إلى Qualified</span>
                           </button>
                         )}
 
                         {lead.status === 'qualified' && (
                           <button
                             onClick={() => onUpdateLeadStatus(lead.id, 'closed', lead.estimatedValue)}
-                            className="w-full py-1.5 bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/30 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all"
+                            aria-label={`تأكيد بيع ${lead.name}`}
+                            className="w-full min-h-11 bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/30 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                           >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>تأكيد البيع (Done / Closed) ✅</span>
+                            <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+                            <span>تأكيد البيع (Closed)</span>
                           </button>
                         )}
 
                         {lead.status === 'closed' && (
-                          <span className="w-full py-1 bg-emerald-500/10 text-emerald-400 rounded text-[11px] font-bold text-center border border-emerald-500/30 flex items-center justify-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> صفقة مغلقة ومحققة
+                          <span className="w-full py-2 bg-emerald-500/10 text-emerald-400 rounded-lg text-[11px] font-bold text-center border border-emerald-500/30 flex items-center justify-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> صفقة مغلقة ومحققة
                           </span>
                         )}
                       </div>
@@ -172,7 +185,7 @@ export const LeadPipelineKanban: React.FC<LeadPipelineKanbanProps> = ({
                 )}
               </div>
 
-            </div>
+            </section>
           );
         })}
       </div>

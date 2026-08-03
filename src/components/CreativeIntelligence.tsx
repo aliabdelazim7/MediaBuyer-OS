@@ -71,7 +71,7 @@ export const CreativeIntelligence: React.FC<CreativeIntelligenceProps> = ({
                 />
                 
                 {/* Type Badge */}
-                <div className="absolute top-3 right-3 px-2 py-1 bg-slate-950/80 backdrop-blur-md rounded-md text-[10px] font-bold text-slate-200 border border-slate-800 flex items-center gap-1">
+                <div className="absolute top-3 start-3 px-2 py-1 bg-slate-950/80 backdrop-blur-md rounded-md text-[11px] font-bold text-slate-200 border border-slate-800 flex items-center gap-1">
                   <Video className="w-3 h-3 text-cyan-400" />
                   <span>{cr.type.toUpperCase()}</span>
                 </div>
@@ -82,7 +82,7 @@ export const CreativeIntelligence: React.FC<CreativeIntelligenceProps> = ({
                     <span className="flex items-center gap-1">
                       <AlertTriangle className="w-3.5 h-3.5" /> Creative Fatigue متفاقم!
                     </span>
-                    <span>Hook Rate 🔴 {cr.hookRate}%</span>
+                    <span>Hook Rate {cr.hookRate}%</span>
                   </div>
                 )}
               </div>
@@ -95,17 +95,17 @@ export const CreativeIntelligence: React.FC<CreativeIntelligenceProps> = ({
                 {/* Performance Metrics Row */}
                 <div className="grid grid-cols-3 gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800/80 text-center">
                   <div>
-                    <div className="text-[10px] text-slate-400">الإنفاق</div>
+                    <div className="text-[11px] text-slate-400">الإنفاق</div>
                     <div className="text-xs font-bold text-slate-200 mt-0.5">{formatCurrency(cr.spend)}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] text-slate-400">Hook Rate (3s)</div>
+                    <div className="text-[11px] text-slate-400">Hook Rate (3s)</div>
                     <div className={`text-xs font-extrabold mt-0.5 ${cr.hookRate >= portfolio.targetHookRate ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {cr.hookRate}%
                     </div>
                   </div>
                   <div>
-                    <div className="text-[10px] text-slate-400">ROAS</div>
+                    <div className="text-[11px] text-slate-400">ROAS</div>
                     <div className={`text-xs font-extrabold mt-0.5 ${cr.roas >= portfolio.targetRoas ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {cr.roas}x
                     </div>

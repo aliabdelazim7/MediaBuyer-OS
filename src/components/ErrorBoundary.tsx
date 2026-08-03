@@ -35,7 +35,9 @@ export class ErrorBoundary extends React.Component<Props, State> {
           <p className="text-xs text-slate-400 leading-relaxed">
             تعذر عرض لوحة التحكم. تم تسجيل تفاصيل الخطأ في الـ console.
           </p>
-          <pre className="text-[11px] text-right text-rose-300 bg-slate-950 border border-slate-800 rounded-xl p-3 overflow-x-auto">
+          {/* Error messages are English/LTR; forcing them into the page's RTL
+              flow mangles punctuation and bracket order. */}
+          <pre dir="ltr" className="text-[11px] text-left text-rose-300 bg-slate-950 border border-slate-800 rounded-xl p-3 overflow-x-auto">
             {this.state.error.message}
           </pre>
           <button
