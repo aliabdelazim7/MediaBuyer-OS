@@ -211,7 +211,17 @@ Deno.serve(async (req: Request) => {
       } else {
         const { data: newPortfolio, error: pErr } = await supabase
           .from('portfolios')
-          .insert({ org_id: org.id, name: account.name, category: 'Meta', client_name: account.name })
+          .insert({
+            org_id: org.id,
+            name: account.name,
+            category: 'Meta',
+            client_name: account.name,
+            // Amounts are stored exactly as Meta reports them, in the ad
+            // account's own currency. The dashboard converts for display
+            // using this. Converting at write time would bake one exchange
+            // rate permanently into historical rows.
+            base_currency: account.currency,
+          })
           .select('id')
           .single();
         if (pErr) {
@@ -240,13 +250,14 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      // The dashboard's currency conversion treats stored amounts as USD.
-      // Silently storing EGP as USD would overstate revenue ~48x, so this is
-      // reported rather than guessed at.
-      if (account.currency !== 'USD') {
-        warnings.push(
-          `حساب ${account.name} بعملة ${account.currency} — الأرقام متخزنة بعملتها الأصلية، والتحويل للدولار لسه مش مفعّل.`,
-        );
+      // Keep an existing portfolio's base currency in step if the ad account
+      // is ever re-denominated; a stale base would silently misprice every
+      // figure under it.
+      if (existingAcc) {
+        await supabase
+          .from('portfolios')
+          .update({ base_currency: account.currency })
+          .eq('id', portfolioId);
       }
 
       // ---- 3. Budgets and status (insights do not carry them) ---------

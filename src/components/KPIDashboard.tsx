@@ -17,20 +17,20 @@ interface KPIDashboardProps {
   portfolio: Portfolio;
   campaigns: Campaign[];
   currency: Currency;
-  currencyRate: number;
+  baseCurrency: Currency;
 }
 
 export const KPIDashboard: React.FC<KPIDashboardProps> = ({
   portfolio,
   campaigns,
   currency,
-  currencyRate
+  baseCurrency
 }) => {
   const [showAdvancedMetrics, setShowAdvancedMetrics] = useState(false);
 
   const formatCurrency = useMemo(
-    () => createCurrencyFormatter(currency, currencyRate),
-    [currency, currencyRate]
+    () => createCurrencyFormatter(currency, baseCurrency),
+    [currency, baseCurrency]
   );
 
   /**

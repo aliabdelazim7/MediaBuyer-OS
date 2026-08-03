@@ -7,18 +7,18 @@ interface CreativeIntelligenceProps {
   creatives: Creative[];
   portfolio: Portfolio;
   currency: Currency;
-  currencyRate: number;
+  baseCurrency: Currency;
 }
 
 export const CreativeIntelligence: React.FC<CreativeIntelligenceProps> = ({
   creatives,
   portfolio,
   currency,
-  currencyRate
+  baseCurrency
 }) => {
   const formatCurrency = useMemo(
-    () => createCurrencyFormatter(currency, currencyRate),
-    [currency, currencyRate]
+    () => createCurrencyFormatter(currency, baseCurrency),
+    [currency, baseCurrency]
   );
 
   return (

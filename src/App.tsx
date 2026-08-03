@@ -27,7 +27,7 @@ import { AddLeadModal } from './components/AddLeadModal';
 import { AuditLogsModal } from './components/AuditLogsModal';
 import { EmptyAccount } from './components/EmptyAccount';
 import { apiService } from './services/apiService';
-import { CURRENCY_RATES, createCurrencyFormatter } from './lib/format';
+import { createCurrencyFormatter } from './lib/format';
 import { evaluatePortfolio } from './services/recommendationEngine';
 import {
   fixtureCollections,
@@ -174,8 +174,6 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const currencyRate = CURRENCY_RATES[currency];
-
   /**
    * Keeps the selection valid when the portfolio list is replaced.
    *
@@ -215,6 +213,7 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
         targetCpa: 25,
         targetCpl: 10,
         targetHookRate: 30,
+        baseCurrency: 'USD' as const,
       },
     [portfolios, selectedPortfolioId],
   );
@@ -244,9 +243,9 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
       evaluatePortfolio(
         portfolioCampaigns,
         currentPortfolio,
-        createCurrencyFormatter(currency, currencyRate),
+        createCurrencyFormatter(currency, currentPortfolio.baseCurrency),
       ),
-    [portfolioCampaigns, currentPortfolio, currency, currencyRate],
+    [portfolioCampaigns, currentPortfolio, currency],
   );
 
   const refreshAuditLogs = useCallback(async () => {
@@ -519,20 +518,20 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
               portfolio={currentPortfolio}
               campaigns={portfolioCampaigns}
               currency={currency}
-              currencyRate={currencyRate}
+              baseCurrency={currentPortfolio.baseCurrency}
             />
             <Suspense fallback={<ChartsFallback />}>
               <AnalyticsCharts
                 campaigns={portfolioCampaigns}
                 currency={currency}
-                currencyRate={currencyRate}
+                baseCurrency={currentPortfolio.baseCurrency}
               />
             </Suspense>
             <CampaignsTable
               portfolio={currentPortfolio}
               campaigns={portfolioCampaigns}
               currency={currency}
-              currencyRate={currencyRate}
+              baseCurrency={currentPortfolio.baseCurrency}
               onUpdateCampaignBudget={handleUpdateCampaignBudget}
             onUpdateCampaignCogs={handleUpdateCampaignCogs}
               onToggleCampaignStatus={handleToggleCampaignStatus}
@@ -545,7 +544,7 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
             portfolio={currentPortfolio}
             campaigns={portfolioCampaigns}
             currency={currency}
-            currencyRate={currencyRate}
+            baseCurrency={currentPortfolio.baseCurrency}
             onUpdateCampaignBudget={handleUpdateCampaignBudget}
             onUpdateCampaignCogs={handleUpdateCampaignCogs}
             onToggleCampaignStatus={handleToggleCampaignStatus}
@@ -557,7 +556,7 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
             creatives={portfolioCreatives}
             portfolio={currentPortfolio}
             currency={currency}
-            currencyRate={currencyRate}
+            baseCurrency={currentPortfolio.baseCurrency}
           />
         )}
 
@@ -565,7 +564,7 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
           <LeadPipelineKanban
             leads={portfolioLeads}
             currency={currency}
-            currencyRate={currencyRate}
+            baseCurrency={currentPortfolio.baseCurrency}
             onUpdateLeadStatus={handleUpdateLeadStatus}
             onOpenAddLeadModal={() => setIsAddLeadModalOpen(true)}
           />

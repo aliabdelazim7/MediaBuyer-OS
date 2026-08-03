@@ -6,7 +6,7 @@ import { UserCheck, CheckCircle2, Phone, Mail, UserPlus, Inbox, MessageSquare, t
 interface LeadPipelineKanbanProps {
   leads: Lead[];
   currency: Currency;
-  currencyRate: number;
+  baseCurrency: Currency;
   onUpdateLeadStatus: (leadId: string, newStatus: LeadStatus, value?: number) => void;
   onOpenAddLeadModal: () => void;
 }
@@ -22,13 +22,13 @@ const COLUMNS: { id: LeadStatus; title: string; icon: LucideIcon; badgeColor: st
 export const LeadPipelineKanban: React.FC<LeadPipelineKanbanProps> = ({
   leads,
   currency,
-  currencyRate,
+  baseCurrency,
   onUpdateLeadStatus,
   onOpenAddLeadModal
 }) => {
   const formatCurrency = useMemo(
-    () => createCurrencyFormatter(currency, currencyRate),
-    [currency, currencyRate]
+    () => createCurrencyFormatter(currency, baseCurrency),
+    [currency, baseCurrency]
   );
 
   // Single pass instead of one filter per column.

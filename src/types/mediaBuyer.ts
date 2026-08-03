@@ -24,6 +24,8 @@ export interface Portfolio {
   targetCpa: number;
   targetCpl: number;
   targetHookRate: number; // percentage e.g. 25%
+  /** Currency the stored amounts are denominated in (the ad account's own). */
+  baseCurrency: Currency;
 }
 
 export interface Campaign {

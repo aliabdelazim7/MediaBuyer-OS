@@ -22,6 +22,7 @@ const portfolio: Portfolio = {
   targetCpa: 20,
   targetCpl: 10,
   targetHookRate: 30,
+  baseCurrency: 'USD',
 };
 
 /** A neutral campaign that fires no rule; each test perturbs one dimension. */

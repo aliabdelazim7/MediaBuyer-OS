@@ -36,7 +36,7 @@ interface CampaignsTableProps {
   portfolio: Portfolio;
   campaigns: Campaign[];
   currency: Currency;
-  currencyRate: number;
+  baseCurrency: Currency;
   onUpdateCampaignBudget: (campaignId: string, newBudget: number) => void;
   onUpdateCampaignCogs: (campaignId: string, cogs: number) => void;
   onToggleCampaignStatus: (campaignId: string) => void;
@@ -46,7 +46,7 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
   portfolio,
   campaigns,
   currency,
-  currencyRate,
+  baseCurrency,
   onUpdateCampaignBudget,
   onUpdateCampaignCogs,
   onToggleCampaignStatus
@@ -58,8 +58,8 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
   const [tempValue, setTempValue] = useState<number>(0);
 
   const formatCurrency = useMemo(
-    () => createCurrencyFormatter(currency, currencyRate),
-    [currency, currencyRate]
+    () => createCurrencyFormatter(currency, baseCurrency),
+    [currency, baseCurrency]
   );
 
   const filteredCampaigns = useMemo(

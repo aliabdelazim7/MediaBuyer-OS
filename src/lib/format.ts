@@ -15,19 +15,34 @@ export const CURRENCY_RATES: Record<Currency, number> = {
 };
 
 /**
- * Builds a currency formatter for a given target currency.
+ * Converts between any two supported currencies.
+ *
+ * CURRENCY_RATES are quoted per USD, so a cross rate goes through USD:
+ * value / RATE[from] gives USD, and multiplying by RATE[to] gives the target.
+ */
+export function convert(amount: number, from: Currency, to: Currency): number {
+  if (from === to) return amount;
+  return (amount / CURRENCY_RATES[from]) * CURRENCY_RATES[to];
+}
+
+/**
+ * Builds a currency formatter.
+ *
+ * `from` is the currency the stored amounts are denominated in — the ad
+ * account's own currency, not necessarily USD. Assuming a USD base
+ * overstated every figure on an EGP account by roughly 48x.
  *
  * `Intl.NumberFormat` construction is expensive and this runs once per table
- * cell (~11x per campaign row), so the instance is created once per
- * (currency, rate) pair and reused.
+ * cell (~11x per campaign row), so the instance is built once per
+ * (display, base) pair and reused.
  */
-export function createCurrencyFormatter(currency: Currency, rate: number) {
+export function createCurrencyFormatter(display: Currency, from: Currency = 'USD') {
   const nf = new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency,
+    currency: display,
     maximumFractionDigits: 0,
   });
-  return (usdValue: number) => nf.format(usdValue * rate);
+  return (value: number) => nf.format(convert(value, from, display));
 }
 
 const compactNumber = new Intl.NumberFormat('en-US');

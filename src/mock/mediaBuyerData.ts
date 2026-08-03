@@ -33,6 +33,7 @@ export const INITIAL_PORTFOLIOS: Portfolio[] = [
     targetCpa: 22.0,
     targetCpl: 10.0,
     targetHookRate: 30.0,
+    baseCurrency: 'USD',
     accounts: [
       { id: 'acc-101', name: 'Meta BM #1 - Scalers', platform: 'meta', currency: 'USD', status: 'active', spendToday: 1450, revenueToday: 5200, roasToday: 3.58, cpaToday: 18.2 },
       { id: 'acc-102', name: 'TikTok Ads - Viral Hub', platform: 'tiktok', currency: 'USD', status: 'active', spendToday: 820, revenueToday: 2300, roasToday: 2.80, cpaToday: 24.5 },
@@ -48,6 +49,7 @@ export const INITIAL_PORTFOLIOS: Portfolio[] = [
     targetCpa: 45.0,
     targetCpl: 15.0,
     targetHookRate: 25.0,
+    baseCurrency: 'USD',
     accounts: [
       { id: 'acc-201', name: 'Meta BM #2 - High Net Worth', platform: 'meta', currency: 'USD', status: 'active', spendToday: 2100, revenueToday: 6800, roasToday: 3.23, cpaToday: 38.0 },
       { id: 'acc-202', name: 'Google Search - Dubai Leads', platform: 'google', currency: 'USD', status: 'warning', spendToday: 1200, revenueToday: 2100, roasToday: 1.75, cpaToday: 58.5 }
@@ -62,6 +64,7 @@ export const INITIAL_PORTFOLIOS: Portfolio[] = [
     targetCpa: 30.0,
     targetCpl: 12.0,
     targetHookRate: 35.0,
+    baseCurrency: 'USD',
     accounts: [
       { id: 'acc-301', name: 'Meta Ads - B2B Retargeting', platform: 'meta', currency: 'USD', status: 'active', spendToday: 950, revenueToday: 3400, roasToday: 3.57, cpaToday: 21.0 },
       { id: 'acc-302', name: 'TikTok Ads - Tech Solopreneurs', platform: 'tiktok', currency: 'USD', status: 'active', spendToday: 450, revenueToday: 1100, roasToday: 2.44, cpaToday: 29.0 }

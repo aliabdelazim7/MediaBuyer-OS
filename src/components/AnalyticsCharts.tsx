@@ -5,12 +5,13 @@ import {
 } from 'recharts';
 import { MOCK_DAILY_METRICS } from '../mock/mediaBuyerData';
 import type { Campaign, Currency, Platform } from '../types/mediaBuyer';
+import { convert } from '../lib/format';
 import { TrendingUp, PieChart } from 'lucide-react';
 
 interface AnalyticsChartsProps {
   campaigns: Campaign[];
   currency: Currency;
-  currencyRate: number;
+  baseCurrency: Currency;
 }
 
 const PLATFORM_LABELS: { key: Platform; label: string }[] = [
@@ -22,17 +23,17 @@ const PLATFORM_LABELS: { key: Platform; label: string }[] = [
 export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
   campaigns,
   currency,
-  currencyRate
+  baseCurrency
 }) => {
   const formattedChartData = useMemo(() => {
-    const convert = (val: number) => Math.round(val * currencyRate);
+    const to = (val: number) => Math.round(convert(val, baseCurrency, currency));
     return MOCK_DAILY_METRICS.map(item => ({
       ...item,
-      spend: convert(item.spend),
-      revenue: convert(item.revenue),
-      netProfit: convert(item.netProfit),
+      spend: to(item.spend),
+      revenue: to(item.revenue),
+      netProfit: to(item.netProfit),
     }));
-  }, [currencyRate]);
+  }, [baseCurrency, currency]);
 
   /**
    * Platform totals in one pass. The previous version ran nine
@@ -53,12 +54,12 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
       const t = totals.get(key)!;
       return {
         platform: label,
-        spend: Math.round(t.spend * currencyRate),
-        revenue: Math.round(t.revenue * currencyRate),
-        profit: Math.round(t.profit * currencyRate),
+        spend: Math.round(convert(t.spend, baseCurrency, currency)),
+        revenue: Math.round(convert(t.revenue, baseCurrency, currency)),
+        profit: Math.round(convert(t.profit, baseCurrency, currency)),
       };
     });
-  }, [campaigns, currencyRate]);
+  }, [campaigns, baseCurrency, currency]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

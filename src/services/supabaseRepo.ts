@@ -93,6 +93,7 @@ interface PortfolioRow {
   target_cpa: unknown;
   target_cpl: unknown;
   target_hook_rate: unknown;
+  base_currency?: string;
   ad_accounts?: { id: string; name: string; platform: string; currency: string; status: string }[];
 }
 
@@ -106,6 +107,7 @@ export function toPortfolio(row: PortfolioRow): Portfolio {
     targetCpa: n(row.target_cpa),
     targetCpl: n(row.target_cpl),
     targetHookRate: n(row.target_hook_rate),
+    baseCurrency: (row.base_currency as Portfolio['baseCurrency']) ?? 'USD',
     accounts: (row.ad_accounts ?? []).map((a) => ({
       id: a.id,
       name: a.name,
