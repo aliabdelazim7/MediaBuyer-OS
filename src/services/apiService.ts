@@ -106,14 +106,20 @@ export const apiService = {
       fetchLeads(supabase).catch(() => null),
     ]);
 
-    if (p) portfolios = p;
-    if (c) campaigns = c;
-    if (l) leads = l;
+    // Signed in against a real backend: what the database holds IS the
+    // truth, including when it holds nothing. Falling back to fixtures here
+    // was the wrong call — it filled an empty account with invented
+    // campaigns that looked entirely real, which is the one thing this app
+    // must never do. An empty database now renders as empty.
+    portfolios = p ?? [];
+    campaigns = c ?? [];
+    leads = l ?? [];
+    auditLogs = [];
 
     return {
-      portfolios: p ? 'live' : 'degraded',
-      campaigns: c ? 'live' : 'degraded',
-      leads: l ? 'live' : 'degraded',
+      portfolios: 'live',
+      campaigns: 'live',
+      leads: 'live',
       data: { portfolios, campaigns, leads },
     };
   },

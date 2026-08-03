@@ -25,6 +25,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { ThresholdSettingsModal } from './components/ThresholdSettingsModal';
 import { AddLeadModal } from './components/AddLeadModal';
 import { AuditLogsModal } from './components/AuditLogsModal';
+import { EmptyAccount } from './components/EmptyAccount';
 import { apiService } from './services/apiService';
 import { CURRENCY_RATES, createCurrencyFormatter } from './lib/format';
 import { evaluatePortfolio } from './services/recommendationEngine';
@@ -86,6 +87,8 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
   const [provenance, setProvenance] = useState(initialProvenance);
 
   const [isSyncing, setIsSyncing] = useState(false);
+  /** Last sync failure, surfaced on the empty-account panel where it is actionable. */
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -188,8 +191,31 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
     }
   }, [portfolios, selectedPortfolioId]);
 
+  /**
+   * A signed-in account whose database is genuinely empty. The dashboard is
+   * replaced by an onboarding panel rather than rendered on fixtures.
+   */
+  const isEmptyAccount = Boolean(session) && provenance.campaigns === 'live' && campaigns.length === 0;
+
+  /**
+   * Placeholder used only while the account is empty. Every consumer of a
+   * real portfolio is gated behind `isEmptyAccount`, but the Header renders
+   * unconditionally and would throw on `undefined.accounts`.
+   */
   const currentPortfolio = useMemo(
-    () => portfolios.find((p) => p.id === selectedPortfolioId) ?? portfolios[0],
+    () =>
+      portfolios.find((p) => p.id === selectedPortfolioId) ??
+      portfolios[0] ?? {
+        id: '',
+        name: 'لا توجد محفظة',
+        category: 'E-commerce' as const,
+        clientName: '—',
+        accounts: [],
+        targetRoas: 3,
+        targetCpa: 25,
+        targetCpl: 10,
+        targetHookRate: 30,
+      },
     [portfolios, selectedPortfolioId],
   );
 
@@ -259,6 +285,7 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
     }
 
     setIsSyncing(true);
+    setSyncError(null);
     notify('جاري السحب من Meta Marketing API...');
 
     void run(async () => {
@@ -286,6 +313,11 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
             `تمت مزامنة ${result.campaignsSynced} حملة من ${result.accounts.length} حساب إعلاني.`,
           );
         }
+      } catch (err) {
+        // Kept on screen next to the retry button, where it is actionable —
+        // a toast disappears before it can be read or acted on.
+        setSyncError(err instanceof Error ? err.message : 'فشلت المزامنة مع Meta.');
+        throw err;
       } finally {
         setIsSyncing(false);
       }
@@ -467,7 +499,21 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
         tabIndex={-1}
         className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8 focus:outline-none"
       >
-        {activeTab === 'overview' && (
+        {/*
+          Signed in against a genuinely empty database. The dashboard is
+          hidden entirely rather than rendered on fixtures — a new account
+          used to open onto invented campaigns and revenue that were
+          indistinguishable from real figures.
+        */}
+        {isEmptyAccount && (
+          <EmptyAccount
+            isSyncing={isSyncing}
+            onTriggerSync={handleTriggerSync}
+            lastError={syncError}
+          />
+        )}
+
+        {!isEmptyAccount && activeTab === 'overview' && (
           <>
             <KPIDashboard
               portfolio={currentPortfolio}
@@ -494,7 +540,7 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
           </>
         )}
 
-        {activeTab === 'campaigns' && (
+        {!isEmptyAccount && activeTab === 'campaigns' && (
           <CampaignsTable
             portfolio={currentPortfolio}
             campaigns={portfolioCampaigns}
@@ -506,7 +552,7 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
           />
         )}
 
-        {activeTab === 'creatives' && (
+        {!isEmptyAccount && activeTab === 'creatives' && (
           <CreativeIntelligence
             creatives={portfolioCreatives}
             portfolio={currentPortfolio}
@@ -515,7 +561,7 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
           />
         )}
 
-        {activeTab === 'leads' && (
+        {!isEmptyAccount && activeTab === 'leads' && (
           <LeadPipelineKanban
             leads={portfolioLeads}
             currency={currency}
@@ -525,7 +571,7 @@ export const App: React.FC<AppProps> = ({ session = null }) => {
           />
         )}
 
-        {activeTab === 'ai' && (
+        {!isEmptyAccount && activeTab === 'ai' && (
           <AIRecommendations recommendations={portfolioRecommendations} />
         )}
       </main>
