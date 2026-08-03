@@ -1,4 +1,4 @@
-import type { AIRecommendation, AuditLog, Campaign, Creative, DailyMetrics, Lead, Portfolio } from '../types/mediaBuyer';
+import type { AuditLog, Campaign, Creative, DailyMetrics, Lead, Portfolio } from '../types/mediaBuyer';
 
 export const INITIAL_AUDIT_LOGS: AuditLog[] = [
   {
@@ -432,48 +432,6 @@ export const INITIAL_LEADS: Lead[] = [
     updatedAt: '2026-08-02 07:30',
     estimatedValue: 1200,
     notes: 'طلب ديمو للنظام وتحديد موعد اجتماع زوم.'
-  }
-];
-
-export const INITIAL_AI_RECOMMENDATIONS: AIRecommendation[] = [
-  {
-    id: 'rec-1',
-    portfolioId: 'port-1',
-    campaignId: 'camp-101',
-    campaignName: 'Meta_Broad_Fashion_Scaling_V4',
-    type: 'scale',
-    severity: 'high',
-    title: '🚀 إشارة توسيع الميزانية (Scale Signal)',
-    description: 'حملة الملابس تحقق ROAS ممتاز قدره 4.0x (أعلى من الهدف 3.0x) وتكلفة اكتساب $18.14 (أقل من الحد $22). الذكاء الاصطناعي يوصي برفع الميزانية اليومية بنسبة +25%.',
-    projectedImpact: '+ $850 أرباح صافية إضافية يومياً',
-    applied: false,
-    actionText: 'رفع الميزانية إلى $1,000/يوم'
-  },
-  {
-    id: 'rec-2',
-    portfolioId: 'port-1',
-    campaignId: 'camp-102',
-    campaignName: 'Meta_Lookalike_Retargeting_Catalog',
-    type: 'refresh_creative',
-    severity: 'high',
-    title: '⚠️ تنبيه إجهاد الكريتيف (Creative Fatigue)',
-    description: 'انخفض معدل الـ Hook Rate للإعلان الفيديو Old_UGC_Testimonial إلى 18% (أقل من 30%). التكلفة CPA ارتفعت إلى $31.90. ينصح باستبدال أول 3 ثوان بـ Hook_Variant_B.',
-    projectedImpact: 'خفض الـ CPA بنسبة -28%',
-    applied: false,
-    actionText: 'استبدال الـ Hook بالفيديو الفائز'
-  },
-  {
-    id: 'rec-3',
-    portfolioId: 'port-2',
-    campaignId: 'camp-202',
-    campaignName: 'Google_Search_Villas_Keywords',
-    type: 'pause',
-    severity: 'high',
-    title: '🛑 تحذير نزيف أرباح (Loss Warning)',
-    description: 'حملة جوجل الكلمات البحثية تجلب ليد بسعر $37.50 (الهدف $15.0). الإيرادات المحققة $2,100 مقابل إنفاق $1,200 وتكلفة $600. يُوصى بإيقاف الكلمات البحثية غير المؤهلة.',
-    projectedImpact: 'إيقاف نزيف $600/يوم من الميزانية',
-    applied: false,
-    actionText: 'إيقاف المجموعة الإعلانية الخاسرة'
   }
 ];
 

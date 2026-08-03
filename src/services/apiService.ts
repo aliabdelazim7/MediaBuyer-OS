@@ -162,6 +162,36 @@ export const apiService = {
   },
 
   /**
+   * Cost of goods for a campaign.
+   *
+   * This is the one input no ad platform can supply — Meta does not know what
+   * the product costs — and it is what turns reported ROAS into actual
+   * profit. Entered by hand, so every change is written to the audit trail:
+   * a silent typo here quietly falsifies every margin downstream.
+   */
+  async updateCampaignCogs(campaignId: string, cogs: number): Promise<Campaign[]> {
+    if (!Number.isFinite(cogs) || cogs < 0) {
+      throw new Error('تكلفة البضاعة لازم تكون رقم موجب أو صفر');
+    }
+
+    const campaign = campaigns.find((c) => c.id === campaignId);
+    if (!campaign) throw new Error(`Unknown campaign: ${campaignId}`);
+
+    campaigns = campaigns.map((c) => (c.id === campaignId ? recompute({ ...c, cogs }) : c));
+
+    addAuditLog(
+      'Ali Abdelazim',
+      'UPDATE_COGS',
+      'Campaign',
+      campaignId,
+      `$${campaign.cogs}`,
+      `$${cogs}`,
+    );
+
+    return campaigns;
+  },
+
+  /**
    * Sets an explicit status. The previous implementation only toggled, which
    * meant applying a "pause this campaign" recommendation to an already-paused
    * campaign silently reactivated it and resumed spend.

@@ -1,6 +1,5 @@
 import React from 'react';
 import type { AuditLog } from '../types/mediaBuyer';
-import { appMode } from '../lib/config';
 import { Modal } from './Modal';
 import { History, ShieldCheck, ShieldAlert, UserCheck } from 'lucide-react';
 
@@ -8,12 +7,19 @@ interface AuditLogsModalProps {
   isOpen: boolean;
   onClose: () => void;
   logs: AuditLog[];
+  /**
+   * Whether these rows actually came from the database. Passed in rather than
+   * inferred from config: the footer previously claimed RLS protection
+   * whenever env vars existed, even though the rows were fixtures.
+   */
+  isPersisted: boolean;
 }
 
 export const AuditLogsModal: React.FC<AuditLogsModalProps> = ({
   isOpen,
   onClose,
-  logs
+  logs,
+  isPersisted
 }) => (
   <Modal
     isOpen={isOpen}
@@ -68,9 +74,7 @@ export const AuditLogsModal: React.FC<AuditLogsModalProps> = ({
     </div>
 
     <div className="pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
-      {/* The old footer unconditionally claimed RLS protection even with no
-          database attached. It now reflects the actual runtime mode. */}
-      {appMode === 'live' ? (
+      {isPersisted ? (
         <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
           <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden="true" /> محمي بسياسات Supabase RLS
         </span>

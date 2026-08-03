@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { Campaign, Portfolio, Currency } from '../types/mediaBuyer';
 import { createCurrencyFormatter } from '../lib/format';
+import { breakEvenRoas } from '../services/recommendationEngine';
 import {
   Play,
   Pause,
@@ -37,6 +38,7 @@ interface CampaignsTableProps {
   currency: Currency;
   currencyRate: number;
   onUpdateCampaignBudget: (campaignId: string, newBudget: number) => void;
+  onUpdateCampaignCogs: (campaignId: string, cogs: number) => void;
   onToggleCampaignStatus: (campaignId: string) => void;
 }
 
@@ -46,11 +48,14 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
   currency,
   currencyRate,
   onUpdateCampaignBudget,
+  onUpdateCampaignCogs,
   onToggleCampaignStatus
 }) => {
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'warning'>('all');
-  const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
-  const [tempBudget, setTempBudget] = useState<number>(0);
+  // Two cells are editable now (budget and COGS), so the edit target carries
+  // which field it is rather than one state per field.
+  const [editing, setEditing] = useState<{ id: string; field: 'budget' | 'cogs' } | null>(null);
+  const [tempValue, setTempValue] = useState<number>(0);
 
   const formatCurrency = useMemo(
     () => createCurrencyFormatter(currency, currencyRate),
@@ -66,20 +71,26 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
     [campaigns, filterStatus, portfolio.targetRoas, portfolio.targetCpa]
   );
 
-  const handleStartBudgetEdit = (c: Campaign) => {
-    setEditingBudgetId(c.id);
-    setTempBudget(c.dailyBudget);
+  const startEdit = (c: Campaign, field: 'budget' | 'cogs') => {
+    setEditing({ id: c.id, field });
+    setTempValue(field === 'budget' ? c.dailyBudget : c.cogs);
   };
 
-  // Guards against submitting 0 / negative / NaN budgets, which the store
-  // rejects anyway — catching it here avoids a pointless error toast.
-  const isBudgetValid = Number.isFinite(tempBudget) && tempBudget > 0;
+  // Budgets must be positive; COGS of zero is legitimate (a service with no
+  // cost of goods). Both reject NaN and negatives, which the store would
+  // throw on anyway — catching here avoids a pointless error toast.
+  const isValid =
+    Number.isFinite(tempValue) && (editing?.field === 'cogs' ? tempValue >= 0 : tempValue > 0);
 
-  const handleSaveBudget = (id: string) => {
-    if (!isBudgetValid) return;
-    onUpdateCampaignBudget(id, tempBudget);
-    setEditingBudgetId(null);
+  const saveEdit = () => {
+    if (!editing || !isValid) return;
+    if (editing.field === 'budget') onUpdateCampaignBudget(editing.id, tempValue);
+    else onUpdateCampaignCogs(editing.id, tempValue);
+    setEditing(null);
   };
+
+  const isEditing = (id: string, field: 'budget' | 'cogs') =>
+    editing?.id === id && editing.field === field;
 
   return (
     <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-md overflow-hidden space-y-4">
@@ -126,6 +137,10 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
               <th scope="col" className="p-3.5 font-bold">الميزانية اليومية</th>
               <th scope="col" className="p-3.5 font-bold">الإنفاق</th>
               <th scope="col" className="p-3.5 font-bold">الإيراد الحقيقي</th>
+              <th scope="col" className="p-3.5 font-bold">
+                تكلفة البضاعة
+                <span className="block font-normal text-[11px] text-slate-400">تُدخَل يدوياً</span>
+              </th>
               <th scope="col" className="p-3.5 font-bold">صافي الربح</th>
               <th scope="col" className="p-3.5 font-bold">ROAS</th>
               <th scope="col" className="p-3.5 font-bold">CPA</th>
@@ -137,7 +152,7 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
           <tbody className="divide-y divide-slate-800/60 text-slate-200">
             {filteredCampaigns.length === 0 && (
               <tr>
-                <td colSpan={11} className="p-10 text-center text-slate-400">
+                <td colSpan={12} className="p-10 text-center text-slate-400">
                   {campaigns.length === 0
                     ? 'لا توجد حملات في هذه المحفظة بعد.'
                     : 'لا توجد حملات مطابقة لهذا الفلتر.'}
@@ -174,7 +189,7 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
 
                   {/* Daily Budget (Editable) */}
                   <td className="p-3.5">
-                    {editingBudgetId === c.id ? (
+                    {isEditing(c.id, 'budget') ? (
                       <div className="flex items-center gap-1">
                         <input
                           type="number"
@@ -182,27 +197,27 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
                           step="1"
                           autoFocus
                           aria-label={`الميزانية اليومية للحملة ${c.name}`}
-                          value={tempBudget}
-                          onChange={(e) => setTempBudget(Number(e.target.value))}
-                          aria-invalid={!isBudgetValid}
+                          value={tempValue}
+                          onChange={(e) => setTempValue(Number(e.target.value))}
+                          aria-invalid={!isValid}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveBudget(c.id);
-                            if (e.key === 'Escape') setEditingBudgetId(null);
+                            if (e.key === 'Enter') saveEdit();
+                            if (e.key === 'Escape') setEditing(null);
                           }}
                           className={`w-20 h-9 bg-slate-950 border rounded-lg px-2 text-xs font-bold ${
-                            isBudgetValid ? 'border-emerald-500 text-emerald-400' : 'border-rose-500 text-rose-400'
+                            isValid ? 'border-emerald-500 text-emerald-400' : 'border-rose-500 text-rose-400'
                           }`}
                         />
                         <button
-                          onClick={() => handleSaveBudget(c.id)}
-                          disabled={!isBudgetValid}
+                          onClick={saveEdit}
+                          disabled={!isValid}
                           aria-label="حفظ الميزانية"
                           className="inline-flex items-center justify-center w-9 h-9 shrink-0 bg-emerald-500 text-slate-950 rounded-lg hover:bg-emerald-400 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors cursor-pointer"
                         >
                           <Check className="w-4 h-4" aria-hidden="true" />
                         </button>
                         <button
-                          onClick={() => setEditingBudgetId(null)}
+                          onClick={() => setEditing(null)}
                           aria-label="إلغاء التعديل"
                           className="inline-flex items-center justify-center w-9 h-9 shrink-0 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors cursor-pointer"
                         >
@@ -214,7 +229,7 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
                         type="button"
                         aria-label={`تعديل ميزانية الحملة ${c.name}`}
                         className="flex items-center gap-1.5 font-bold group min-h-9 cursor-pointer hover:text-emerald-400 transition-colors"
-                        onClick={() => handleStartBudgetEdit(c)}
+                        onClick={() => startEdit(c, 'budget')}
                       >
                         <span>{formatCurrency(c.dailyBudget)}/يوم</span>
                         <Edit2 className="w-3 h-3 text-slate-400 group-hover:text-emerald-400 transition-colors" />
@@ -232,20 +247,92 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
                     {formatCurrency(c.revenue)}
                   </td>
 
+                  {/*
+                    COGS — the one input no ad platform can supply, and the
+                    reason net profit and break-even ROAS below are possible
+                    at all. Editable inline; a zero value is flagged because
+                    it silently makes every margin look perfect.
+                  */}
+                  <td className="p-3.5">
+                    {isEditing(c.id, 'cogs') ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          autoFocus
+                          aria-label={`تكلفة البضاعة لحملة ${c.name}`}
+                          value={tempValue}
+                          onChange={(e) => setTempValue(Number(e.target.value))}
+                          aria-invalid={!isValid}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveEdit();
+                            if (e.key === 'Escape') setEditing(null);
+                          }}
+                          className={`w-24 h-9 bg-slate-950 border rounded-lg px-2 text-xs font-bold ${
+                            isValid ? 'border-emerald-500 text-emerald-400' : 'border-rose-500 text-rose-400'
+                          }`}
+                        />
+                        <button
+                          onClick={saveEdit}
+                          disabled={!isValid}
+                          aria-label="حفظ تكلفة البضاعة"
+                          className="inline-flex items-center justify-center w-9 h-9 shrink-0 bg-emerald-500 text-slate-950 rounded-lg hover:bg-emerald-400 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        >
+                          <Check className="w-4 h-4" aria-hidden="true" />
+                        </button>
+                        <button
+                          onClick={() => setEditing(null)}
+                          aria-label="إلغاء التعديل"
+                          className="inline-flex items-center justify-center w-9 h-9 shrink-0 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors cursor-pointer"
+                        >
+                          <X className="w-4 h-4" aria-hidden="true" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        aria-label={`تعديل تكلفة البضاعة لحملة ${c.name}`}
+                        className="flex items-center gap-1.5 font-bold group min-h-9 cursor-pointer hover:text-emerald-400 transition-colors"
+                        onClick={() => startEdit(c, 'cogs')}
+                      >
+                        <span className={c.cogs > 0 ? 'text-slate-200' : 'text-amber-400'}>
+                          {c.cogs > 0 ? formatCurrency(c.cogs) : 'غير محددة'}
+                        </span>
+                        <Edit2 className="w-3 h-3 text-slate-400 group-hover:text-emerald-400 transition-colors" aria-hidden="true" />
+                      </button>
+                    )}
+                  </td>
+
                   {/* Net Profit */}
                   <td className={`p-3.5 font-black ${c.netProfit > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                     {formatCurrency(c.netProfit)}
                   </td>
 
-                  {/* ROAS (Green or Red) */}
+                  {/*
+                    ROAS against the target, with break-even underneath.
+                    Break-even is 1/(1-COGS ratio), so a 2.0x ROAS at 45% COGS
+                    is barely profitable — the distinction Meta's reporting
+                    cannot make, and the one juniors most often miss.
+                  */}
                   <td className="p-3.5">
                     <span className={`px-2 py-0.5 font-black text-xs rounded border ${
-                      isRoasGood 
-                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
+                      isRoasGood
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                         : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
                     }`}>
                       {c.roas.toFixed(2)}x
                     </span>
+                    {c.cogs > 0 && (
+                      <span
+                        className={`block mt-1 text-[11px] ${
+                          c.roas >= breakEvenRoas(c) ? 'text-slate-400' : 'text-rose-400 font-bold'
+                        }`}
+                        title="نقطة التعادل: أقل ROAS تبدأ عنده تكسب بعد خصم تكلفة البضاعة"
+                      >
+                        التعادل {breakEvenRoas(c).toFixed(2)}x
+                      </span>
+                    )}
                   </td>
 
                   {/* CPA (Green or Red) */}

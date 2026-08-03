@@ -134,8 +134,19 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
           </div>
           <p className="text-xs text-slate-400 mt-1">
             العميل: <span className="text-slate-200 font-medium">{portfolio.clientName}</span> | 
-            الأهداف المعتمدة: ROAS ≥ <span className="text-emerald-400 font-bold">{portfolio.targetRoas}x</span> | 
-            CPA ≤ <span className="text-emerald-400 font-bold">{formatCurrency(portfolio.targetCpa)}</span>
+            {/*
+              dir="ltr" on the operator+value pairs: inside an RTL paragraph
+              the bidi algorithm mirrors ≥ and ≤, so "CPA ≤ $22" rendered as
+              "$22 ≥" — reversing the meaning of the target.
+            */}
+            الأهداف المعتمدة:{' '}
+            <span dir="ltr" className="inline-block">
+              ROAS ≥ <span className="text-emerald-400 font-bold">{portfolio.targetRoas}x</span>
+            </span>{' '}
+            |{' '}
+            <span dir="ltr" className="inline-block">
+              CPA ≤ <span className="text-emerald-400 font-bold">{formatCurrency(portfolio.targetCpa)}</span>
+            </span>
           </p>
         </div>
 
@@ -291,7 +302,10 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
               <div className={`text-lg font-extrabold mt-1 ${hookStat.color}`}>
                 {avgHookRate.toFixed(1)}%
               </div>
-              <span className="text-[11px] text-slate-400">الهدف: ≥ {portfolio.targetHookRate}%</span>
+              <span className="text-[11px] text-slate-400">
+                الهدف:{' '}
+                <span dir="ltr" className="inline-block">≥ {portfolio.targetHookRate}%</span>
+              </span>
             </div>
 
             {/* Hold Rate */}

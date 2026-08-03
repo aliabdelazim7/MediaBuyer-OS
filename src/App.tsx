@@ -1,6 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
-  AIRecommendation,
   AuditLog,
   Campaign,
   Creative,
@@ -11,7 +10,6 @@ import type {
   Portfolio,
 } from './types/mediaBuyer';
 import {
-  INITIAL_AI_RECOMMENDATIONS,
   INITIAL_CAMPAIGNS,
   INITIAL_CREATIVES,
   INITIAL_LEADS,
@@ -29,8 +27,9 @@ import { AddLeadModal } from './components/AddLeadModal';
 import { AuditLogsModal } from './components/AuditLogsModal';
 import { apiService } from './services/apiService';
 import { webhookHandler } from './services/webhookHandler';
-import { CURRENCY_RATES } from './lib/format';
-import { appMode } from './lib/config';
+import { CURRENCY_RATES, createCurrencyFormatter } from './lib/format';
+import { evaluatePortfolio } from './services/recommendationEngine';
+import { fixtureCollections, hasFixtureData, initialProvenance } from './lib/config';
 import { AlertTriangle, Zap } from 'lucide-react';
 
 /**
@@ -51,17 +50,14 @@ const ChartsFallback = () => (
 
 export type TabId = 'overview' | 'campaigns' | 'creatives' | 'leads' | 'ai';
 
-/** Budget multiplier applied by a "scale" recommendation (+25%). */
-const SCALE_FACTOR = 1.25;
-
 export const App: React.FC = () => {
   const [portfolios, setPortfolios] = useState<Portfolio[]>(INITIAL_PORTFOLIOS);
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>('port-1');
   const [campaigns, setCampaigns] = useState<Campaign[]>(INITIAL_CAMPAIGNS);
   const [creatives] = useState<Creative[]>(INITIAL_CREATIVES);
   const [leads, setLeads] = useState<Lead[]>(INITIAL_LEADS);
-  const [recommendations, setRecommendations] =
-    useState<AIRecommendation[]>(INITIAL_AI_RECOMMENDATIONS);
+  // Recommendations are derived, never stored. There is no state to go stale
+  // and no `applied` flag, because the app does not execute anything.
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
   const [currency, setCurrency] = useState<Currency>('USD');
@@ -71,6 +67,12 @@ export const App: React.FC = () => {
   const [isThresholdModalOpen, setIsThresholdModalOpen] = useState(false);
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
   const [isAuditLogsModalOpen, setIsAuditLogsModalOpen] = useState(false);
+
+  /**
+   * Where each collection's data actually came from. Only a successful
+   * backend fetch may move a collection to 'live'.
+   */
+  const [provenance] = useState(initialProvenance);
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [toast, setToast] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
@@ -139,9 +141,19 @@ export const App: React.FC = () => {
     [leads, selectedPortfolioId],
   );
 
+  /**
+   * Computed from the campaigns actually on screen, against this portfolio's
+   * thresholds. Money is formatted in the currently selected currency so the
+   * explanation text matches the rest of the dashboard.
+   */
   const portfolioRecommendations = useMemo(
-    () => recommendations.filter((r) => r.portfolioId === selectedPortfolioId),
-    [recommendations, selectedPortfolioId],
+    () =>
+      evaluatePortfolio(
+        portfolioCampaigns,
+        currentPortfolio,
+        createCurrencyFormatter(currency, currencyRate),
+      ),
+    [portfolioCampaigns, currentPortfolio, currency, currencyRate],
   );
 
   const refreshAuditLogs = useCallback(async () => {
@@ -226,6 +238,16 @@ export const App: React.FC = () => {
     [notify, refreshAuditLogs, run],
   );
 
+  const handleUpdateCampaignCogs = useCallback(
+    (campaignId: string, cogs: number) =>
+      run(async () => {
+        setCampaigns(await apiService.updateCampaignCogs(campaignId, cogs));
+        await refreshAuditLogs();
+        notify('تم تحديث تكلفة البضاعة وإعادة حساب صافي الربح ونقطة التعادل.');
+      }, 'تعذر تحديث تكلفة البضاعة.'),
+    [notify, refreshAuditLogs, run],
+  );
+
   const handleToggleCampaignStatus = useCallback(
     (campaignId: string) =>
       run(async () => {
@@ -285,32 +307,17 @@ export const App: React.FC = () => {
     [campaigns, notify, refreshAuditLogs, run, selectedPortfolioId],
   );
 
-  const handleApplyRecommendation = useCallback(
-    (recId: string) =>
-      run(async () => {
-        const rec = recommendations.find((r) => r.id === recId);
-        if (!rec || rec.applied) return;
-
-        const campaign = campaigns.find((c) => c.id === rec.campaignId);
-        if (!campaign) throw new Error('الحملة المرتبطة بهذا الاقتراح غير موجودة.');
-
-        if (rec.type === 'scale') {
-          const nextBudget = Math.round(campaign.dailyBudget * SCALE_FACTOR);
-          setCampaigns(await apiService.updateCampaignBudget(campaign.id, nextBudget));
-        } else if (rec.type === 'pause') {
-          // Explicit target state. Toggling here meant applying a "pause"
-          // recommendation to an already-paused campaign restarted its spend.
-          setCampaigns(await apiService.setCampaignStatus(campaign.id, 'paused'));
-        }
-
-        setRecommendations((prev) =>
-          prev.map((r) => (r.id === recId ? { ...r, applied: true } : r)),
-        );
-        await refreshAuditLogs();
-        notify(`تم تنفيذ اقتراح الذكاء الاصطناعي: ${rec.title} بنجاح!`);
-      }, 'تعذر تنفيذ الاقتراح.'),
-    [campaigns, notify, recommendations, refreshAuditLogs, run],
-  );
+  /*
+   * `handleApplyRecommendation` was deleted rather than repaired.
+   *
+   * It read a hardcoded fixture recommendation and really did mutate the
+   * campaign's budget by +25%. Two problems, either one disqualifying:
+   *   - the recommendation it acted on was invented, not computed;
+   *   - the write never reached Meta, so once a real sync exists the change
+   *     would silently revert and the dashboard would report a scale-up that
+   *     never happened.
+   * Execution belongs in Ads Manager. See CAN_WRITE_TO_AD_PLATFORM.
+   */
 
   const handleSaveThresholds = useCallback(
     (targetRoas: number, targetCpa: number, targetCpl: number, targetHookRate: number) =>
@@ -335,15 +342,20 @@ export const App: React.FC = () => {
       {/* First tab stop: lets keyboard users bypass the header's ~15 controls. */}
       <a href="#main-content" className="skip-link">تخطي إلى المحتوى الرئيسي</a>
 
-      {appMode === 'demo' && (
+      {/*
+        Driven by what the data layer actually returned, not by whether env
+        vars exist. Previously two environment variables were enough to hide
+        this banner while every number on screen remained a fixture.
+      */}
+      {hasFixtureData(provenance) && (
         <div
           role="status"
-          className="bg-amber-500/10 border-b border-amber-500/30 text-amber-300 text-xs font-bold px-4 py-2 flex items-center justify-center gap-2"
+          className="bg-amber-500/10 border-b border-amber-500/30 text-amber-300 text-xs font-bold px-4 py-2 flex items-center justify-center gap-2 text-center"
         >
-          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
           <span>
-            وضع العرض التجريبي (Demo Mode) — لا توجد قاعدة بيانات متصلة، وكل التغييرات مؤقتة وتُفقد
-            عند تحديث الصفحة.
+            بيانات تجريبية — {fixtureCollections(provenance).join('، ')} مش متصلة بمصدر حقيقي.
+            متاخدش قرار ميزانية بناءً على الأرقام دي.
           </span>
         </div>
       )}
@@ -381,7 +393,7 @@ export const App: React.FC = () => {
         onTriggerSync={handleTriggerSync}
         activeTab={activeTab}
         onChangeTab={setActiveTab}
-        recommendationCount={portfolioRecommendations.filter((r) => !r.applied).length}
+        recommendationCount={portfolioRecommendations.filter((r) => r.severity !== 'info').length}
       />
 
       <main
@@ -410,6 +422,7 @@ export const App: React.FC = () => {
               currency={currency}
               currencyRate={currencyRate}
               onUpdateCampaignBudget={handleUpdateCampaignBudget}
+            onUpdateCampaignCogs={handleUpdateCampaignCogs}
               onToggleCampaignStatus={handleToggleCampaignStatus}
             />
           </>
@@ -422,6 +435,7 @@ export const App: React.FC = () => {
             currency={currency}
             currencyRate={currencyRate}
             onUpdateCampaignBudget={handleUpdateCampaignBudget}
+            onUpdateCampaignCogs={handleUpdateCampaignCogs}
             onToggleCampaignStatus={handleToggleCampaignStatus}
           />
         )}
@@ -446,10 +460,7 @@ export const App: React.FC = () => {
         )}
 
         {activeTab === 'ai' && (
-          <AIRecommendations
-            recommendations={portfolioRecommendations}
-            onApplyRecommendation={handleApplyRecommendation}
-          />
+          <AIRecommendations recommendations={portfolioRecommendations} />
         )}
       </main>
 
@@ -479,6 +490,7 @@ export const App: React.FC = () => {
         isOpen={isAuditLogsModalOpen}
         onClose={() => setIsAuditLogsModalOpen(false)}
         logs={auditLogs}
+        isPersisted={provenance.auditLogs === 'live'}
       />
 
       {/* text-slate-500 on slate-950 is 4.24:1 — below the 4.5:1 minimum. */}

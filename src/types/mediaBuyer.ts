@@ -91,18 +91,62 @@ export interface Lead {
   notes?: string;
 }
 
-export interface AIRecommendation {
+/**
+ * What the media buyer should go and do in Ads Manager. The app never
+ * performs these itself — see CAN_WRITE_TO_AD_PLATFORM in lib/config.ts.
+ */
+export type RecommendationAction =
+  | 'wait'
+  | 'pause'
+  | 'reduce_budget'
+  | 'review_targeting'
+  | 'refresh_creative'
+  | 'hold'
+  | 'scale';
+
+/** One threshold check, shown so the reasoning is auditable rather than magic. */
+export interface RecommendationEvidence {
+  label: string;
+  /** The campaign's actual value, pre-formatted for display. */
+  actual: string;
+  /** What it was compared against. */
+  target: string;
+  ok: boolean;
+}
+
+/**
+ * A recommendation COMPUTED from campaign data against the portfolio's
+ * thresholds.
+ *
+ * The previous `AIRecommendation` was a hardcoded fixture with invented
+ * impact figures ("+$850/day") and an `applied` flag whose button really did
+ * mutate campaign budgets. Every field here is derived, and every rule
+ * carries its evidence and its confidence so a junior can check the working
+ * rather than trusting a verdict.
+ */
+export interface Recommendation {
   id: string;
+  /** Which rule fired — makes the output auditable and testable. */
+  ruleId: string;
   portfolioId: string;
   campaignId: string;
   campaignName: string;
-  type: 'scale' | 'pause' | 'refresh_creative' | 'bid_adjust';
+  action: RecommendationAction;
   severity: 'high' | 'medium' | 'info';
   title: string;
-  description: string;
-  projectedImpact: string;
-  applied: boolean;
-  actionText: string;
+  /** What was observed, with the real numbers in it. */
+  whatWeSaw: string;
+  /** Why it matters — the part that teaches, not just instructs. */
+  whyItMatters: string;
+  /** The concrete next step, performed in Ads Manager. */
+  whatToDo: string;
+  evidence: RecommendationEvidence[];
+  /**
+   * How much to trust this. Driven by spend and conversion volume — a
+   * campaign with 3 conversions cannot support a scale decision no matter
+   * how good its ROAS looks.
+   */
+  confidence: 'high' | 'medium' | 'low';
 }
 
 export interface AuditLog {
