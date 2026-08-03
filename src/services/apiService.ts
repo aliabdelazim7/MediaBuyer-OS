@@ -1,188 +1,266 @@
-import { supabase } from '../lib/supabaseClient';
-import type { Portfolio, Campaign, Lead, LeadStatus } from '../types/mediaBuyer';
-import { 
-  INITIAL_PORTFOLIOS, 
-  INITIAL_CAMPAIGNS, 
-  INITIAL_LEADS, 
+import { getSupabase } from '../lib/supabaseClient';
+import type { AuditLog, Campaign, Lead, LeadStatus, Portfolio } from '../types/mediaBuyer';
+import {
+  INITIAL_AUDIT_LOGS,
+  INITIAL_CAMPAIGNS,
+  INITIAL_LEADS,
+  INITIAL_PORTFOLIOS,
 } from '../mock/mediaBuyerData';
 
-export interface AuditLog {
-  id: string;
-  userName: string;
-  actionType: string;
-  targetEntity: string;
-  entityId: string;
-  oldValue: string;
-  newValue: string;
-  createdAt: string;
+export type { AuditLog };
+
+/**
+ * In-memory store.
+ *
+ * This is the single source of truth for the UI. Components must never keep a
+ * second, independently-mutated copy of these collections — every mutator
+ * below returns the FULL collection so React state stays an exact mirror of
+ * the store. (Returning a filtered subset here previously caused rows from
+ * other portfolios to be dropped from state.)
+ */
+let campaigns: Campaign[] = INITIAL_CAMPAIGNS.map((c) => ({ ...c }));
+let leads: Lead[] = INITIAL_LEADS.map((l) => ({ ...l }));
+let portfolios: Portfolio[] = INITIAL_PORTFOLIOS.map((p) => ({ ...p }));
+let auditLogs: AuditLog[] = INITIAL_AUDIT_LOGS.map((l) => ({ ...l }));
+
+let logSeq = 0;
+const nextId = (prefix: string) => `${prefix}-${Date.now()}-${logSeq++}`;
+
+/** `YYYY-MM-DD HH:mm` in UTC — matches the format used by the seed data. */
+const timestamp = () => new Date().toISOString().replace('T', ' ').slice(0, 16);
+
+/**
+ * Recomputes every derived metric from the raw counters.
+ *
+ * Derived values (roas/cpa/cpl/netProfit/ctr/cpm/cpc/hookRate/holdRate) must
+ * never be updated piecemeal — doing so lets them drift out of agreement with
+ * each other and with the totals shown on the dashboard.
+ */
+function recompute(c: Campaign): Campaign {
+  const div = (a: number, b: number) => (b > 0 ? a / b : 0);
+  return {
+    ...c,
+    netProfit: c.revenue - c.spend - c.cogs,
+    roas: Number(div(c.revenue, c.spend).toFixed(2)),
+    cpa: Number(div(c.spend, c.conversions).toFixed(2)),
+    cpl: Number(div(c.spend, c.leadsCount).toFixed(2)),
+    ctr: Number((div(c.clicks, c.impressions) * 100).toFixed(2)),
+    cpm: Number((div(c.spend, c.impressions) * 1000).toFixed(2)),
+    cpc: Number(div(c.spend, c.clicks).toFixed(2)),
+    hookRate: Number((div(c.video3sViews, c.impressions) * 100).toFixed(1)),
+    holdRate: Number((div(c.video15sViews, c.video3sViews) * 100).toFixed(1)),
+  };
 }
 
-// In-memory store for instant reactive reactivity (fallback & real-time sync)
-let localPortfolios = [...INITIAL_PORTFOLIOS];
-let localCampaigns = [...INITIAL_CAMPAIGNS];
-let localLeads = [...INITIAL_LEADS];
-let localAuditLogs: AuditLog[] = [
-  {
-    id: 'log-1',
-    userName: 'Ali Abdelazim (Media Buyer)',
-    actionType: 'UPDATE_BUDGET',
-    targetEntity: 'Campaign',
-    entityId: 'camp-101',
-    oldValue: '$600/day',
-    newValue: '$800/day',
-    createdAt: '2026-08-02 08:30'
-  },
-  {
-    id: 'log-2',
-    userName: 'AI Copilot Engine',
-    actionType: 'FATIGUE_ALERT',
-    targetEntity: 'Creative',
-    entityId: 'cr-3',
-    oldValue: 'Healthy',
-    newValue: 'Fatigued (Hook Rate 18%)',
-    createdAt: '2026-08-02 09:15'
-  }
-];
-
-export const apiService = {
-  // Fetch All Portfolios
-  async getPortfolios(): Promise<Portfolio[]> {
-    try {
-      const { data, error } = await supabase.from('portfolios').select('*');
-      if (error || !data || data.length === 0) {
-        return localPortfolios;
-      }
-      return data as any;
-    } catch {
-      return localPortfolios;
-    }
-  },
-
-  // Update Portfolio Target Thresholds
-  async updatePortfolioThresholds(
-    portfolioId: string, 
-    targetRoas: number, 
-    targetCpa: number, 
-    targetCpl: number, 
-    targetHookRate: number
-  ): Promise<Portfolio[]> {
-    localPortfolios = localPortfolios.map(p => {
-      if (p.id === portfolioId) {
-        return { ...p, targetRoas, targetCpa, targetCpl, targetHookRate };
-      }
-      return p;
-    });
-
-    this.addAuditLog('Ali Abdelazim', 'UPDATE_THRESHOLDS', 'Portfolio', portfolioId, 'Old Targets', `ROAS ${targetRoas}x, CPA $${targetCpa}`);
-
-    try {
-      await supabase.from('portfolios').update({
-        target_roas: targetRoas,
-        target_cpa: targetCpa,
-        target_cpl: targetCpl,
-        target_hook_rate: targetHookRate
-      }).eq('id', portfolioId);
-    } catch {
-      // Ignored in offline fallback mode
-    }
-
-    return localPortfolios;
-  },
-
-  // Fetch Campaigns
-  async getCampaigns(portfolioId: string): Promise<Campaign[]> {
-    return localCampaigns.filter(c => c.portfolioId === portfolioId);
-  },
-
-  // Update Campaign Budget with Audit Trail
-  async updateCampaignBudget(campaignId: string, newBudget: number): Promise<Campaign[]> {
-    const campaign = localCampaigns.find(c => c.id === campaignId);
-    const oldBudget = campaign ? `$${campaign.dailyBudget}/day` : 'N/A';
-
-    localCampaigns = localCampaigns.map(c => c.id === campaignId ? { ...c, dailyBudget: newBudget } : c);
-
-    this.addAuditLog('Ali Abdelazim', 'UPDATE_BUDGET', 'Campaign', campaignId, oldBudget, `$${newBudget}/day`);
-
-    return localCampaigns;
-  },
-
-  // Toggle Campaign Status
-  async toggleCampaignStatus(campaignId: string): Promise<Campaign[]> {
-    let nextStatus: 'active' | 'paused' = 'active';
-
-    localCampaigns = localCampaigns.map(c => {
-      if (c.id === campaignId) {
-        nextStatus = c.status === 'active' ? 'paused' : 'active';
-        return { ...c, status: nextStatus };
-      }
-      return c;
-    });
-
-    this.addAuditLog('Ali Abdelazim', 'TOGGLE_STATUS', 'Campaign', campaignId, 'Status', nextStatus);
-
-    return localCampaigns;
-  },
-
-  // Fetch Leads
-  async getLeads(portfolioId: string): Promise<Lead[]> {
-    return localLeads.filter(l => l.portfolioId === portfolioId);
-  },
-
-  // Add New Lead (Webhook / Manual)
-  async addLead(leadData: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>): Promise<Lead[]> {
-    const newLead: Lead = {
-      ...leadData,
-      id: `lead-${Date.now()}`,
-      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
-    };
-
-    localLeads = [newLead, ...localLeads];
-
-    // Increment campaign leads count
-    localCampaigns = localCampaigns.map(c => c.id === leadData.campaignId ? { ...c, leadsCount: c.leadsCount + 1 } : c);
-
-    this.addAuditLog('Meta Lead Webhook', 'INBOUND_LEAD', 'Lead', newLead.id, 'New Lead', `${newLead.name} (${newLead.email})`);
-
-    return localLeads;
-  },
-
-  // Update Lead Status in CRM Kanban
-  async updateLeadStatus(leadId: string, newStatus: LeadStatus, value?: number): Promise<Lead[]> {
-    localLeads = localLeads.map(l => {
-      if (l.id === leadId) {
-        return {
-          ...l,
-          status: newStatus,
-          closedValue: value !== undefined ? value : l.closedValue,
-          updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
-        };
-      }
-      return l;
-    });
-
-    this.addAuditLog('Media Buyer', 'CRM_STAGE_CHANGE', 'Lead', leadId, 'Status', newStatus);
-
-    return localLeads;
-  },
-
-  // Fetch Audit Logs
-  async getAuditLogs(): Promise<AuditLog[]> {
-    return localAuditLogs;
-  },
-
-  // Internal Audit Logger
-  addAuditLog(userName: string, actionType: string, targetEntity: string, entityId: string, oldValue: string, newValue: string) {
-    const log: AuditLog = {
-      id: `log-${Date.now()}`,
+function addAuditLog(
+  userName: string,
+  actionType: string,
+  targetEntity: string,
+  entityId: string,
+  oldValue: string,
+  newValue: string,
+): void {
+  auditLogs = [
+    {
+      id: nextId('log'),
       userName,
       actionType,
       targetEntity,
       entityId,
       oldValue,
       newValue,
-      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
-    };
-    localAuditLogs = [log, ...localAuditLogs];
-  }
+      createdAt: timestamp(),
+    },
+    ...auditLogs,
+  ];
+}
+
+export const apiService = {
+  /**
+   * Portfolios are the only entity currently read from Supabase. Reads are
+   * best-effort: a configuration or network failure falls back to the local
+   * store so the dashboard still renders, but the failure is surfaced to the
+   * caller rather than swallowed.
+   */
+  async getPortfolios(): Promise<{ data: Portfolio[]; degraded: boolean }> {
+    const pending = getSupabase();
+    if (!pending) return { data: portfolios, degraded: false };
+    try {
+      const { data, error } = await (await pending).from('portfolios').select('*');
+      if (error || !data?.length) return { data: portfolios, degraded: true };
+      return { data: data as unknown as Portfolio[], degraded: false };
+    } catch {
+      return { data: portfolios, degraded: true };
+    }
+  },
+
+  async updatePortfolioThresholds(
+    portfolioId: string,
+    targetRoas: number,
+    targetCpa: number,
+    targetCpl: number,
+    targetHookRate: number,
+  ): Promise<Portfolio[]> {
+    const previous = portfolios.find((p) => p.id === portfolioId);
+    portfolios = portfolios.map((p) =>
+      p.id === portfolioId ? { ...p, targetRoas, targetCpa, targetCpl, targetHookRate } : p,
+    );
+
+    addAuditLog(
+      'Ali Abdelazim',
+      'UPDATE_THRESHOLDS',
+      'Portfolio',
+      portfolioId,
+      previous ? `ROAS ${previous.targetRoas}x, CPA $${previous.targetCpa}` : 'N/A',
+      `ROAS ${targetRoas}x, CPA $${targetCpa}`,
+    );
+
+    const pending = getSupabase();
+    if (pending) {
+      const { error } = await (await pending)
+        .from('portfolios')
+        .update({
+          target_roas: targetRoas,
+          target_cpa: targetCpa,
+          target_cpl: targetCpl,
+          target_hook_rate: targetHookRate,
+        })
+        .eq('id', portfolioId);
+      // Surfaced rather than silently ignored: the local store has already
+      // been updated, so the UI would otherwise show a persisted value that
+      // does not exist in the database.
+      if (error) throw new Error(`Failed to persist thresholds: ${error.message}`);
+    }
+
+    return portfolios;
+  },
+
+  async getCampaigns(): Promise<Campaign[]> {
+    return campaigns;
+  },
+
+  async updateCampaignBudget(campaignId: string, newBudget: number): Promise<Campaign[]> {
+    if (!Number.isFinite(newBudget) || newBudget <= 0) {
+      throw new Error('Daily budget must be a positive number');
+    }
+
+    const campaign = campaigns.find((c) => c.id === campaignId);
+    if (!campaign) throw new Error(`Unknown campaign: ${campaignId}`);
+
+    campaigns = campaigns.map((c) => (c.id === campaignId ? { ...c, dailyBudget: newBudget } : c));
+
+    addAuditLog(
+      'Ali Abdelazim',
+      'UPDATE_BUDGET',
+      'Campaign',
+      campaignId,
+      `$${campaign.dailyBudget}/day`,
+      `$${newBudget}/day`,
+    );
+
+    return campaigns;
+  },
+
+  /**
+   * Sets an explicit status. The previous implementation only toggled, which
+   * meant applying a "pause this campaign" recommendation to an already-paused
+   * campaign silently reactivated it and resumed spend.
+   */
+  async setCampaignStatus(campaignId: string, status: Campaign['status']): Promise<Campaign[]> {
+    const campaign = campaigns.find((c) => c.id === campaignId);
+    if (!campaign) throw new Error(`Unknown campaign: ${campaignId}`);
+    if (campaign.status === status) return campaigns;
+
+    campaigns = campaigns.map((c) => (c.id === campaignId ? { ...c, status } : c));
+    addAuditLog('Ali Abdelazim', 'SET_STATUS', 'Campaign', campaignId, campaign.status, status);
+
+    return campaigns;
+  },
+
+  async toggleCampaignStatus(campaignId: string): Promise<Campaign[]> {
+    const campaign = campaigns.find((c) => c.id === campaignId);
+    if (!campaign) throw new Error(`Unknown campaign: ${campaignId}`);
+    return this.setCampaignStatus(campaignId, campaign.status === 'active' ? 'paused' : 'active');
+  },
+
+  /**
+   * Applies a batch of raw counter deltas and recomputes derived metrics.
+   * Used by the live-sync simulation so that synced numbers go through the
+   * store instead of being patched directly into React state (which used to
+   * be reverted by the next unrelated mutation).
+   */
+  async applyMetricsDelta(
+    campaignId: string,
+    delta: Partial<Pick<Campaign, 'spend' | 'revenue' | 'conversions' | 'impressions' | 'clicks'>>,
+  ): Promise<Campaign[]> {
+    campaigns = campaigns.map((c) =>
+      c.id === campaignId
+        ? recompute({
+            ...c,
+            spend: c.spend + (delta.spend ?? 0),
+            revenue: c.revenue + (delta.revenue ?? 0),
+            conversions: c.conversions + (delta.conversions ?? 0),
+            impressions: c.impressions + (delta.impressions ?? 0),
+            clicks: c.clicks + (delta.clicks ?? 0),
+          })
+        : c,
+    );
+    return campaigns;
+  },
+
+  /** Returns ALL leads. Filtering by portfolio is a view concern. */
+  async getLeads(): Promise<Lead[]> {
+    return leads;
+  },
+
+  async addLead(leadData: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>): Promise<{
+    leads: Lead[];
+    campaigns: Campaign[];
+  }> {
+    const now = timestamp();
+    const newLead: Lead = { ...leadData, id: nextId('lead'), createdAt: now, updatedAt: now };
+
+    leads = [newLead, ...leads];
+
+    // Bump the campaign's lead counter and recompute CPL so the campaigns
+    // table and the CRM board never disagree about how many leads exist.
+    campaigns = campaigns.map((c) =>
+      c.id === leadData.campaignId ? recompute({ ...c, leadsCount: c.leadsCount + 1 }) : c,
+    );
+
+    addAuditLog(
+      'Meta Lead Webhook',
+      'INBOUND_LEAD',
+      'Lead',
+      newLead.id,
+      'New Lead',
+      `${newLead.name} (${newLead.email})`,
+    );
+
+    return { leads, campaigns };
+  },
+
+  async updateLeadStatus(leadId: string, newStatus: LeadStatus, value?: number): Promise<Lead[]> {
+    const lead = leads.find((l) => l.id === leadId);
+    if (!lead) throw new Error(`Unknown lead: ${leadId}`);
+
+    leads = leads.map((l) =>
+      l.id === leadId
+        ? {
+            ...l,
+            status: newStatus,
+            closedValue: value ?? l.closedValue,
+            updatedAt: timestamp(),
+          }
+        : l,
+    );
+
+    addAuditLog('Media Buyer', 'CRM_STAGE_CHANGE', 'Lead', leadId, lead.status, newStatus);
+
+    return leads;
+  },
+
+  async getAuditLogs(): Promise<AuditLog[]> {
+    return auditLogs;
+  },
 };

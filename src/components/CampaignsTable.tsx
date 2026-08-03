@@ -1,11 +1,31 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { Campaign, Portfolio, Currency } from '../types/mediaBuyer';
-import { 
-  Play, 
-  Pause, 
-  Edit2, 
-  Check 
+import { createCurrencyFormatter } from '../lib/format';
+import {
+  Play,
+  Pause,
+  Edit2,
+  Check,
+  X
 } from 'lucide-react';
+
+const STATUS_LABEL: Record<Campaign['status'], string> = {
+  active: 'نشطة 🟢',
+  paused: 'متوقفة ⏸️',
+  warning: 'تحذير 🔴',
+};
+
+const STATUS_STYLE: Record<Campaign['status'], string> = {
+  active: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  paused: 'bg-slate-500/10 text-slate-300 border-slate-500/30',
+  warning: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+};
+
+const FILTERS: { id: 'all' | 'active' | 'warning'; label: string }[] = [
+  { id: 'all', label: 'جميع الحملات' },
+  { id: 'active', label: '🟢 النشطة' },
+  { id: 'warning', label: '🔴 تحظى بتنبيه' },
+];
 
 interface CampaignsTableProps {
   portfolio: Portfolio;
@@ -28,23 +48,31 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
   const [tempBudget, setTempBudget] = useState<number>(0);
 
-  const formatCurrency = (val: number) => {
-    const converted = val * currencyRate;
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency, maximumFractionDigits: 0 }).format(converted);
-  };
+  const formatCurrency = useMemo(
+    () => createCurrencyFormatter(currency, currencyRate),
+    [currency, currencyRate]
+  );
 
-  const filteredCampaigns = campaigns.filter(c => {
-    if (filterStatus === 'active') return c.status === 'active';
-    if (filterStatus === 'warning') return c.status === 'warning' || c.roas < portfolio.targetRoas || c.cpa > portfolio.targetCpa;
-    return true;
-  });
+  const filteredCampaigns = useMemo(
+    () => campaigns.filter(c => {
+      if (filterStatus === 'active') return c.status === 'active';
+      if (filterStatus === 'warning') return c.status === 'warning' || c.roas < portfolio.targetRoas || c.cpa > portfolio.targetCpa;
+      return true;
+    }),
+    [campaigns, filterStatus, portfolio.targetRoas, portfolio.targetCpa]
+  );
 
   const handleStartBudgetEdit = (c: Campaign) => {
     setEditingBudgetId(c.id);
     setTempBudget(c.dailyBudget);
   };
 
+  // Guards against submitting 0 / negative / NaN budgets, which the store
+  // rejects anyway — catching it here avoids a pointless error toast.
+  const isBudgetValid = Number.isFinite(tempBudget) && tempBudget > 0;
+
   const handleSaveBudget = (id: string) => {
+    if (!isBudgetValid) return;
     onUpdateCampaignBudget(id, tempBudget);
     setEditingBudgetId(null);
   };
@@ -66,14 +94,11 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
 
         {/* Filter Buttons */}
         <div className="flex items-center bg-slate-950 p-1 border border-slate-800 rounded-xl">
-          {[
-            { id: 'all', label: 'جميع الحملات' },
-            { id: 'active', label: '🟢 النشطة' },
-            { id: 'warning', label: '🔴 تحظى بتنبيه' },
-          ].map(f => (
+          {FILTERS.map(f => (
             <button
               key={f.id}
-              onClick={() => setFilterStatus(f.id as any)}
+              aria-pressed={filterStatus === f.id}
+              onClick={() => setFilterStatus(f.id)}
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
                 filterStatus === f.id ? 'bg-slate-800 text-emerald-400 border border-slate-700' : 'text-slate-400 hover:text-slate-200'
               }`}
@@ -103,6 +128,15 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 text-slate-200">
+            {filteredCampaigns.length === 0 && (
+              <tr>
+                <td colSpan={11} className="p-10 text-center text-slate-400">
+                  {campaigns.length === 0
+                    ? 'لا توجد حملات في هذه المحفظة بعد.'
+                    : 'لا توجد حملات مطابقة لهذا الفلتر.'}
+                </td>
+              </tr>
+            )}
             {filteredCampaigns.map(c => {
               const isRoasGood = c.roas >= portfolio.targetRoas;
               const isCpaGood = c.cpa <= portfolio.targetCpa;
@@ -122,14 +156,12 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
                     </div>
                   </td>
 
-                  {/* Status Badge */}
+                  {/* Status Badge — all three states. A paused campaign used to
+                      render as "تحذير 🔴", conflating a deliberate pause with a
+                      performance alert. */}
                   <td className="p-3.5">
-                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${
-                      c.status === 'active' 
-                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
-                        : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                    }`}>
-                      {c.status === 'active' ? 'نشطة 🟢' : 'تحذير 🔴'}
+                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border whitespace-nowrap ${STATUS_STYLE[c.status]}`}>
+                      {STATUS_LABEL[c.status]}
                     </span>
                   </td>
 
@@ -137,24 +169,48 @@ export const CampaignsTable: React.FC<CampaignsTableProps> = ({
                   <td className="p-3.5">
                     {editingBudgetId === c.id ? (
                       <div className="flex items-center gap-1">
-                        <input 
-                          type="number" 
-                          value={tempBudget} 
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          autoFocus
+                          aria-label={`الميزانية اليومية للحملة ${c.name}`}
+                          value={tempBudget}
                           onChange={(e) => setTempBudget(Number(e.target.value))}
-                          className="w-20 bg-slate-950 border border-emerald-500 rounded px-1.5 py-1 text-xs text-emerald-400 font-bold outline-none"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveBudget(c.id);
+                            if (e.key === 'Escape') setEditingBudgetId(null);
+                          }}
+                          className={`w-20 bg-slate-950 border rounded px-1.5 py-1 text-xs font-bold outline-none ${
+                            isBudgetValid ? 'border-emerald-500 text-emerald-400' : 'border-rose-500 text-rose-400'
+                          }`}
                         />
-                        <button 
+                        <button
                           onClick={() => handleSaveBudget(c.id)}
-                          className="p-1 bg-emerald-500 text-slate-950 rounded hover:bg-emerald-400"
+                          disabled={!isBudgetValid}
+                          aria-label="حفظ الميزانية"
+                          className="p-1 bg-emerald-500 text-slate-950 rounded hover:bg-emerald-400 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed"
                         >
                           <Check className="w-3.5 h-3.5" />
                         </button>
+                        <button
+                          onClick={() => setEditingBudgetId(null)}
+                          aria-label="إلغاء التعديل"
+                          className="p-1 bg-slate-800 text-slate-400 rounded hover:bg-slate-700"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1.5 font-bold group cursor-pointer" onClick={() => handleStartBudgetEdit(c)}>
+                      <button
+                        type="button"
+                        aria-label={`تعديل ميزانية الحملة ${c.name}`}
+                        className="flex items-center gap-1.5 font-bold group"
+                        onClick={() => handleStartBudgetEdit(c)}
+                      >
                         <span>{formatCurrency(c.dailyBudget)}/يوم</span>
                         <Edit2 className="w-3 h-3 text-slate-400 group-hover:text-emerald-400 transition-colors" />
-                      </div>
+                      </button>
                     )}
                   </td>
 

@@ -38,3 +38,47 @@ body {
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
+
+/*
+ * Entrance animations.
+ *
+ * The markup already used `animate-in`, `fade-in` and `slide-in-from-bottom`
+ * (from the `tailwindcss-animate` plugin), but that plugin was never installed
+ * — Tailwind emitted no CSS for them, so every modal and toast appeared with
+ * no transition at all. Defining them here restores the intended behaviour
+ * without adding a dependency.
+ */
+@keyframes mb-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes mb-slide-in-from-bottom {
+  from { opacity: 0; transform: translateY(0.75rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-in {
+  animation-duration: 200ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: both;
+}
+
+.animate-in.fade-in {
+  animation-name: mb-fade-in;
+}
+
+.animate-in.slide-in-from-bottom {
+  animation-name: mb-slide-in-from-bottom;
+}
+
+/* Respect users who have asked the OS to reduce motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

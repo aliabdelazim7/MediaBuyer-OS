@@ -1,54 +1,64 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 import { MOCK_DAILY_METRICS } from '../mock/mediaBuyerData';
-import type { Portfolio, Campaign, Currency } from '../types/mediaBuyer';
+import type { Campaign, Currency, Platform } from '../types/mediaBuyer';
 import { TrendingUp, PieChart } from 'lucide-react';
 
 interface AnalyticsChartsProps {
-  portfolio: Portfolio;
   campaigns: Campaign[];
   currency: Currency;
   currencyRate: number;
 }
+
+const PLATFORM_LABELS: { key: Platform; label: string }[] = [
+  { key: 'meta', label: 'Meta Ads' },
+  { key: 'tiktok', label: 'TikTok Ads' },
+  { key: 'google', label: 'Google Ads' },
+];
 
 export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
   campaigns,
   currency,
   currencyRate
 }) => {
-  const formatValue = (val: number) => Math.round(val * currencyRate);
+  const formattedChartData = useMemo(() => {
+    const convert = (val: number) => Math.round(val * currencyRate);
+    return MOCK_DAILY_METRICS.map(item => ({
+      ...item,
+      spend: convert(item.spend),
+      revenue: convert(item.revenue),
+      netProfit: convert(item.netProfit),
+    }));
+  }, [currencyRate]);
 
-  const formattedChartData = MOCK_DAILY_METRICS.map(item => ({
-    ...item,
-    spend: formatValue(item.spend),
-    revenue: formatValue(item.revenue),
-    netProfit: formatValue(item.netProfit),
-  }));
-
-  // Group performance by platform
-  const platformData = [
-    {
-      platform: 'Meta Ads',
-      spend: formatValue(campaigns.filter(c => c.platform === 'meta').reduce((a, c) => a + c.spend, 0)),
-      revenue: formatValue(campaigns.filter(c => c.platform === 'meta').reduce((a, c) => a + c.revenue, 0)),
-      profit: formatValue(campaigns.filter(c => c.platform === 'meta').reduce((a, c) => a + c.netProfit, 0)),
-    },
-    {
-      platform: 'TikTok Ads',
-      spend: formatValue(campaigns.filter(c => c.platform === 'tiktok').reduce((a, c) => a + c.spend, 0)),
-      revenue: formatValue(campaigns.filter(c => c.platform === 'tiktok').reduce((a, c) => a + c.revenue, 0)),
-      profit: formatValue(campaigns.filter(c => c.platform === 'tiktok').reduce((a, c) => a + c.netProfit, 0)),
-    },
-    {
-      platform: 'Google Ads',
-      spend: formatValue(campaigns.filter(c => c.platform === 'google').reduce((a, c) => a + c.spend, 0)),
-      revenue: formatValue(campaigns.filter(c => c.platform === 'google').reduce((a, c) => a + c.revenue, 0)),
-      profit: formatValue(campaigns.filter(c => c.platform === 'google').reduce((a, c) => a + c.netProfit, 0)),
+  /**
+   * Platform totals in one pass. The previous version ran nine
+   * filter+reduce traversals (three per platform) on every render.
+   */
+  const platformData = useMemo(() => {
+    const totals = new Map<Platform, { spend: number; revenue: number; profit: number }>(
+      PLATFORM_LABELS.map(p => [p.key, { spend: 0, revenue: 0, profit: 0 }])
+    );
+    for (const c of campaigns) {
+      const t = totals.get(c.platform);
+      if (!t) continue;
+      t.spend += c.spend;
+      t.revenue += c.revenue;
+      t.profit += c.netProfit;
     }
-  ];
+    return PLATFORM_LABELS.map(({ key, label }) => {
+      const t = totals.get(key)!;
+      return {
+        platform: label,
+        spend: Math.round(t.spend * currencyRate),
+        revenue: Math.round(t.revenue * currencyRate),
+        profit: Math.round(t.profit * currencyRate),
+      };
+    });
+  }, [campaigns, currencyRate]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

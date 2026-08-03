@@ -105,6 +105,17 @@ export interface AIRecommendation {
   actionText: string;
 }
 
+export interface AuditLog {
+  id: string;
+  userName: string;
+  actionType: string;
+  targetEntity: string;
+  entityId: string;
+  oldValue: string;
+  newValue: string;
+  createdAt: string;
+}
+
 export interface DailyMetrics {
   date: string;
   spend: number;

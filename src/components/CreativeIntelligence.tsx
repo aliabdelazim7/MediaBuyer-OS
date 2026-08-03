@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { Creative, Portfolio, Currency } from '../types/mediaBuyer';
+import { createCurrencyFormatter } from '../lib/format';
 import { Video, AlertTriangle, Sparkles, Flame } from 'lucide-react';
 
 interface CreativeIntelligenceProps {
@@ -15,10 +16,10 @@ export const CreativeIntelligence: React.FC<CreativeIntelligenceProps> = ({
   currency,
   currencyRate
 }) => {
-  const formatCurrency = (val: number) => {
-    const converted = val * currencyRate;
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency, maximumFractionDigits: 0 }).format(converted);
-  };
+  const formatCurrency = useMemo(
+    () => createCurrencyFormatter(currency, currencyRate),
+    [currency, currencyRate]
+  );
 
   return (
     <div className="space-y-6">
@@ -34,10 +35,16 @@ export const CreativeIntelligence: React.FC<CreativeIntelligenceProps> = ({
             ربط أدوات الرؤية بالذكاء الاصطناعي لتوقع تشبع الإعلان (Creative Fatigue) وتوصيات تحسين أول 3 ثوانٍ
           </p>
         </div>
-        <span className="px-3 py-1 bg-amber-500/10 text-amber-300 border border-amber-500/30 text-xs font-bold rounded-lg">
-          3 إعلانات مصنفة
+        <span className="px-3 py-1 bg-amber-500/10 text-amber-300 border border-amber-500/30 text-xs font-bold rounded-lg whitespace-nowrap">
+          {creatives.length} إعلانات مصنفة
         </span>
       </div>
+
+      {creatives.length === 0 && (
+        <div className="py-16 text-center text-sm text-slate-400 border border-dashed border-slate-800 rounded-2xl">
+          لا توجد كريتيفات مرتبطة بحملات هذه المحفظة.
+        </div>
+      )}
 
       {/* Creatives Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -53,9 +60,13 @@ export const CreativeIntelligence: React.FC<CreativeIntelligenceProps> = ({
             >
               {/* Media Thumbnail Container */}
               <div className="relative h-44 w-full bg-slate-950 overflow-hidden">
-                <img 
-                  src={cr.thumbnailUrl} 
-                  alt={cr.title} 
+                <img
+                  src={cr.thumbnailUrl}
+                  alt={cr.title}
+                  loading="lazy"
+                  decoding="async"
+                  width={300}
+                  height={176}
                   className="w-full h-full object-cover opacity-80 hover:opacity-100 transition-opacity"
                 />
                 
@@ -71,7 +82,7 @@ export const CreativeIntelligence: React.FC<CreativeIntelligenceProps> = ({
                     <span className="flex items-center gap-1">
                       <AlertTriangle className="w-3.5 h-3.5" /> Creative Fatigue متفاقم!
                     </span>
-                    <span>Hook Rate 🔴 18%</span>
+                    <span>Hook Rate 🔴 {cr.hookRate}%</span>
                   </div>
                 )}
               </div>

@@ -1,15 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import type { Portfolio, Campaign, Creative, Lead, AIRecommendation, Currency, LeadStatus } from './types/mediaBuyer';
-import { 
-  INITIAL_PORTFOLIOS, 
-  INITIAL_CAMPAIGNS, 
-  INITIAL_CREATIVES, 
-  INITIAL_LEADS, 
-  INITIAL_AI_RECOMMENDATIONS 
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type {
+  AIRecommendation,
+  AuditLog,
+  Campaign,
+  Creative,
+  Currency,
+  Lead,
+  LeadStatus,
+  Platform,
+  Portfolio,
+} from './types/mediaBuyer';
+import {
+  INITIAL_AI_RECOMMENDATIONS,
+  INITIAL_CAMPAIGNS,
+  INITIAL_CREATIVES,
+  INITIAL_LEADS,
+  INITIAL_PORTFOLIOS,
 } from './mock/mediaBuyerData';
 import { Header } from './components/Header';
 import { KPIDashboard } from './components/KPIDashboard';
-import { AnalyticsCharts } from './components/AnalyticsCharts';
 import { CampaignsTable } from './components/CampaignsTable';
 import { CreativeIntelligence } from './components/CreativeIntelligence';
 import { LeadPipelineKanban } from './components/LeadPipelineKanban';
@@ -18,199 +27,344 @@ import { CommandPalette } from './components/CommandPalette';
 import { ThresholdSettingsModal } from './components/ThresholdSettingsModal';
 import { AddLeadModal } from './components/AddLeadModal';
 import { AuditLogsModal } from './components/AuditLogsModal';
-import { apiService, type AuditLog } from './services/apiService';
+import { apiService } from './services/apiService';
 import { webhookHandler } from './services/webhookHandler';
-import { Zap } from 'lucide-react';
+import { CURRENCY_RATES } from './lib/format';
+import { appMode } from './lib/config';
+import { AlertTriangle, Zap } from 'lucide-react';
+
+/**
+ * Recharts pulls in ~11 d3-* packages and dominated the initial bundle even
+ * though charts only appear on the Overview tab. Loading it lazily keeps the
+ * first paint independent of the charting library.
+ */
+const AnalyticsCharts = lazy(() =>
+  import('./components/AnalyticsCharts').then((m) => ({ default: m.AnalyticsCharts })),
+);
+
+const ChartsFallback = () => (
+  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" aria-busy="true">
+    <div className="lg:col-span-2 h-96 bg-slate-900/90 border border-slate-800 rounded-2xl animate-pulse" />
+    <div className="h-96 bg-slate-900/90 border border-slate-800 rounded-2xl animate-pulse" />
+  </div>
+);
+
+export type TabId = 'overview' | 'campaigns' | 'creatives' | 'leads' | 'ai';
+
+/** Budget multiplier applied by a "scale" recommendation (+25%). */
+const SCALE_FACTOR = 1.25;
 
 export const App: React.FC = () => {
-  // State
   const [portfolios, setPortfolios] = useState<Portfolio[]>(INITIAL_PORTFOLIOS);
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>('port-1');
   const [campaigns, setCampaigns] = useState<Campaign[]>(INITIAL_CAMPAIGNS);
   const [creatives] = useState<Creative[]>(INITIAL_CREATIVES);
   const [leads, setLeads] = useState<Lead[]>(INITIAL_LEADS);
-  const [recommendations, setRecommendations] = useState<AIRecommendation[]>(INITIAL_AI_RECOMMENDATIONS);
+  const [recommendations, setRecommendations] =
+    useState<AIRecommendation[]>(INITIAL_AI_RECOMMENDATIONS);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  
+
   const [currency, setCurrency] = useState<Currency>('USD');
-  const [activeTab, setActiveTab] = useState<'overview' | 'campaigns' | 'creatives' | 'leads' | 'ai'>('overview');
-  
-  // Modals state
+  const [activeTab, setActiveTab] = useState<TabId>('overview');
+
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isThresholdModalOpen, setIsThresholdModalOpen] = useState(false);
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
   const [isAuditLogsModalOpen, setIsAuditLogsModalOpen] = useState(false);
-  
-  // Real-time sync state
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Load audit logs on mount
-  useEffect(() => {
-    apiService.getAuditLogs().then(logs => setAuditLogs(logs));
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [toast, setToast] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
+
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Replaces any in-flight toast instead of letting the previous timer clear
+   * the newer message.
+   */
+  const notify = useCallback((text: string, tone: 'info' | 'error' = 'info') => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ text, tone });
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
   }, []);
 
-  // Currency Exchange Rates (Base USD)
-  const currencyRates: Record<Currency, number> = {
-    USD: 1.0,
-    EGP: 48.5,
-    SAR: 3.75,
-    EUR: 0.92
-  };
+  // Clear both timers on unmount so nothing calls setState on a dead tree.
+  useEffect(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      if (syncTimer.current) clearTimeout(syncTimer.current);
+    },
+    [],
+  );
 
-  const currentPortfolio = portfolios.find(p => p.id === selectedPortfolioId) || portfolios[0];
-  const portfolioCampaigns = campaigns.filter(c => c.portfolioId === selectedPortfolioId);
-  const portfolioCreatives = creatives.filter(cr => portfolioCampaigns.some(c => c.id === cr.campaignId));
-  const portfolioLeads = leads.filter(l => l.portfolioId === selectedPortfolioId);
-  const portfolioRecommendations = recommendations.filter(r => r.portfolioId === selectedPortfolioId);
+  useEffect(() => {
+    apiService.getAuditLogs().then(setAuditLogs).catch(() => setAuditLogs([]));
+  }, []);
 
-  // Toast notifier helper
-  const triggerToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 4000);
-  };
+  /**
+   * Global Cmd/Ctrl+K. This lives here rather than inside CommandPalette so
+   * the shortcut can *open* the palette — the palette's own listener could
+   * only ever close it, which made the advertised shortcut a no-op.
+   */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((open) => !open);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
-  // Real-time Data Sync Simulator & Webhook Ingestion
-  const handleTriggerSync = async () => {
+  const currencyRate = CURRENCY_RATES[currency];
+
+  const currentPortfolio = useMemo(
+    () => portfolios.find((p) => p.id === selectedPortfolioId) ?? portfolios[0],
+    [portfolios, selectedPortfolioId],
+  );
+
+  const portfolioCampaigns = useMemo(
+    () => campaigns.filter((c) => c.portfolioId === selectedPortfolioId),
+    [campaigns, selectedPortfolioId],
+  );
+
+  const portfolioCreatives = useMemo(() => {
+    const ids = new Set(portfolioCampaigns.map((c) => c.id));
+    return creatives.filter((cr) => ids.has(cr.campaignId));
+  }, [creatives, portfolioCampaigns]);
+
+  const portfolioLeads = useMemo(
+    () => leads.filter((l) => l.portfolioId === selectedPortfolioId),
+    [leads, selectedPortfolioId],
+  );
+
+  const portfolioRecommendations = useMemo(
+    () => recommendations.filter((r) => r.portfolioId === selectedPortfolioId),
+    [recommendations, selectedPortfolioId],
+  );
+
+  const refreshAuditLogs = useCallback(async () => {
+    setAuditLogs(await apiService.getAuditLogs());
+  }, []);
+
+  /**
+   * Wraps a mutation so a rejected promise surfaces as a toast instead of an
+   * unhandled rejection that leaves the UI silently stale.
+   */
+  const run = useCallback(
+    async (action: () => Promise<void>, fallbackMessage: string) => {
+      try {
+        await action();
+      } catch (err) {
+        notify(err instanceof Error ? err.message : fallbackMessage, 'error');
+      }
+    },
+    [notify],
+  );
+
+  const handleTriggerSync = useCallback(() => {
+    if (isSyncing) return;
     setIsSyncing(true);
-    triggerToast('جاري الاتصال بـ Meta Graph API و Webhooks لتحديث الأرقام اللحظية...');
+    notify('جاري الاتصال بـ Meta Graph API و Webhooks لتحديث الأرقام اللحظية...');
 
-    // Simulate inbound lead via Webhook Handler
-    await webhookHandler.processInboundLead({
-      portfolioId: selectedPortfolioId,
-      campaignId: portfolioCampaigns[0]?.id || 'camp-101',
-      name: 'م. يوسف النجار',
-      email: 'youssef.n@enterprise.sa',
-      phone: '+966 54 321 9876',
-      sourcePlatform: 'meta',
-      estimatedValue: 850,
-      notes: 'Inbound Webhook payload verified via HMAC signature'
-    });
-
-    setTimeout(async () => {
+    const targetCampaign = portfolioCampaigns[0];
+    if (!targetCampaign) {
       setIsSyncing(false);
-      // Simulate live campaign metrics update
-      setCampaigns(prev => prev.map(c => {
-        if (c.id === 'camp-101') {
-          return {
-            ...c,
-            revenue: c.revenue + 450,
-            spend: c.spend + 80,
-            conversions: c.conversions + 2,
-            netProfit: (c.revenue + 450) - (c.spend + 80) - c.cogs,
-            roas: Number(((c.revenue + 450) / (c.spend + 80)).toFixed(2))
-          };
-        }
-        return c;
-      }));
+      notify('لا توجد حملات في هذه المحفظة للمزامنة.', 'error');
+      return;
+    }
 
-      // Refresh leads and audit logs
-      const updatedLeads = await apiService.getLeads(selectedPortfolioId);
-      setLeads(updatedLeads);
-      const updatedLogs = await apiService.getAuditLogs();
-      setAuditLogs(updatedLogs);
+    syncTimer.current = setTimeout(() => {
+      void run(async () => {
+        // Inbound lead is attributed to a campaign that actually belongs to
+        // the selected portfolio (this used to fall back to a hardcoded
+        // 'camp-101' from an unrelated portfolio).
+        const ingest = await webhookHandler.processInboundLead({
+          portfolioId: selectedPortfolioId,
+          campaignId: targetCampaign.id,
+          campaignName: targetCampaign.name,
+          name: 'م. يوسف النجار',
+          email: 'youssef.n@enterprise.sa',
+          phone: '+966 54 321 9876',
+          sourcePlatform: 'meta',
+          estimatedValue: 850,
+          notes: 'Inbound lead simulated by the live-sync demo',
+        });
 
-      triggerToast('✅ تم استلام 1 ليد جديد عبر Webhook وتحديث الـ ROAS والـ Net Profit بنجاح!');
+        // Metric deltas go through the store so they are not reverted by the
+        // next unrelated mutation, and so every derived metric (ROAS, CPA,
+        // CPL, net profit) is recomputed together.
+        await apiService.applyMetricsDelta(targetCampaign.id, {
+          revenue: 450,
+          spend: 80,
+          conversions: 2,
+        });
+
+        setCampaigns(await apiService.getCampaigns());
+        setLeads(await apiService.getLeads());
+        await refreshAuditLogs();
+
+        notify(
+          ingest.success
+            ? '✅ تم استلام 1 ليد جديد عبر Webhook وتحديث الـ ROAS والـ Net Profit بنجاح!'
+            : `تعذر استلام الليد: ${ingest.message}`,
+          ingest.success ? 'info' : 'error',
+        );
+      }, 'فشلت المزامنة اللحظية.');
+      setIsSyncing(false);
     }, 2000);
-  };
+  }, [isSyncing, notify, portfolioCampaigns, refreshAuditLogs, run, selectedPortfolioId]);
 
-  // Handlers
-  const handleUpdateCampaignBudget = async (campaignId: string, newBudget: number) => {
-    const updated = await apiService.updateCampaignBudget(campaignId, newBudget);
-    setCampaigns(updated);
-    const logs = await apiService.getAuditLogs();
-    setAuditLogs(logs);
-    triggerToast(`تحديث الميزانية اليومية للحملة إلى $${newBudget}/يوم بنجاح!`);
-  };
+  const handleUpdateCampaignBudget = useCallback(
+    (campaignId: string, newBudget: number) =>
+      run(async () => {
+        setCampaigns(await apiService.updateCampaignBudget(campaignId, newBudget));
+        await refreshAuditLogs();
+        notify(`تحديث الميزانية اليومية للحملة إلى $${newBudget}/يوم بنجاح!`);
+      }, 'تعذر تحديث الميزانية.'),
+    [notify, refreshAuditLogs, run],
+  );
 
-  const handleToggleCampaignStatus = async (campaignId: string) => {
-    const updated = await apiService.toggleCampaignStatus(campaignId);
-    setCampaigns(updated);
-    const logs = await apiService.getAuditLogs();
-    setAuditLogs(logs);
-    triggerToast(`تم تحديث حالة الحملة الإعلانية بنجاح.`);
-  };
+  const handleToggleCampaignStatus = useCallback(
+    (campaignId: string) =>
+      run(async () => {
+        setCampaigns(await apiService.toggleCampaignStatus(campaignId));
+        await refreshAuditLogs();
+        notify('تم تحديث حالة الحملة الإعلانية بنجاح.');
+      }, 'تعذر تحديث حالة الحملة.'),
+    [notify, refreshAuditLogs, run],
+  );
 
-  const handleUpdateLeadStatus = async (leadId: string, newStatus: LeadStatus, value?: number) => {
-    const updated = await apiService.updateLeadStatus(leadId, newStatus, value);
-    setLeads(updated);
-    const logs = await apiService.getAuditLogs();
-    setAuditLogs(logs);
+  const handleUpdateLeadStatus = useCallback(
+    (leadId: string, newStatus: LeadStatus, value?: number) =>
+      run(async () => {
+        setLeads(await apiService.updateLeadStatus(leadId, newStatus, value));
+        await refreshAuditLogs();
+        notify(
+          newStatus === 'closed'
+            ? '🎉 مبروك! تم تأكيد مبيعة جديدة وتحديث أرباح الحملة في الـ Dashboard.'
+            : 'تم تحديث مرحلة الليد في الـ CRM بنجاح.',
+        );
+      }, 'تعذر تحديث مرحلة الليد.'),
+    [notify, refreshAuditLogs, run],
+  );
 
-    if (newStatus === 'closed') {
-      triggerToast('🎉 مبروك! تم تأكيد مبيعة جديدة وتحديث أرباح الحملة في الـ Dashboard.');
-    } else {
-      triggerToast('تم تحديث مرحلة الليد في الـ CRM بنجاح.');
-    }
-  };
+  const handleAddLead = useCallback(
+    (input: {
+      name: string;
+      email: string;
+      phone: string;
+      campaignId: string;
+      sourcePlatform: Platform;
+      estimatedValue: number;
+      notes: string;
+    }) =>
+      run(async () => {
+        const campaign = campaigns.find((c) => c.id === input.campaignId);
+        if (!campaign) throw new Error('يجب اختيار حملة صالحة لربط الليد بها.');
 
-  const handleAddLead = async (newLeadData: {
-    name: string;
-    email: string;
-    phone: string;
-    campaignId: string;
-    sourcePlatform: any;
-    estimatedValue: number;
-    notes: string;
-  }) => {
-    const selectedCamp = campaigns.find(c => c.id === newLeadData.campaignId);
+        const result = await apiService.addLead({
+          portfolioId: selectedPortfolioId,
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          name: input.name,
+          email: input.email,
+          phone: input.phone,
+          sourcePlatform: input.sourcePlatform,
+          status: 'registered',
+          estimatedValue: input.estimatedValue,
+          notes: input.notes,
+        });
 
-    const updatedLeads = await apiService.addLead({
-      portfolioId: selectedPortfolioId,
-      campaignId: newLeadData.campaignId,
-      campaignName: selectedCamp?.name || 'حملة عامة',
-      name: newLeadData.name,
-      email: newLeadData.email,
-      phone: newLeadData.phone,
-      sourcePlatform: newLeadData.sourcePlatform,
-      status: 'registered',
-      estimatedValue: newLeadData.estimatedValue,
-      notes: newLeadData.notes
-    });
+        setLeads(result.leads);
+        setCampaigns(result.campaigns);
+        await refreshAuditLogs();
+        notify(`تم تسجيل الليد (${input.name}) بنجاح وربطه بحملة ${campaign.name}!`);
+      }, 'تعذر تسجيل الليد.'),
+    [campaigns, notify, refreshAuditLogs, run, selectedPortfolioId],
+  );
 
-    setLeads(updatedLeads);
-    const logs = await apiService.getAuditLogs();
-    setAuditLogs(logs);
+  const handleApplyRecommendation = useCallback(
+    (recId: string) =>
+      run(async () => {
+        const rec = recommendations.find((r) => r.id === recId);
+        if (!rec || rec.applied) return;
 
-    triggerToast(`تم تسجيل الليد (${newLeadData.name}) بنجاح وربطه بحملة ${selectedCamp?.name}!`);
-  };
+        const campaign = campaigns.find((c) => c.id === rec.campaignId);
+        if (!campaign) throw new Error('الحملة المرتبطة بهذا الاقتراح غير موجودة.');
 
-  const handleApplyRecommendation = (recId: string) => {
-    const rec = recommendations.find(r => r.id === recId);
-    if (!rec) return;
+        if (rec.type === 'scale') {
+          const nextBudget = Math.round(campaign.dailyBudget * SCALE_FACTOR);
+          setCampaigns(await apiService.updateCampaignBudget(campaign.id, nextBudget));
+        } else if (rec.type === 'pause') {
+          // Explicit target state. Toggling here meant applying a "pause"
+          // recommendation to an already-paused campaign restarted its spend.
+          setCampaigns(await apiService.setCampaignStatus(campaign.id, 'paused'));
+        }
 
-    setRecommendations(prev => prev.map(r => r.id === recId ? { ...r, applied: true } : r));
+        setRecommendations((prev) =>
+          prev.map((r) => (r.id === recId ? { ...r, applied: true } : r)),
+        );
+        await refreshAuditLogs();
+        notify(`تم تنفيذ اقتراح الذكاء الاصطناعي: ${rec.title} بنجاح!`);
+      }, 'تعذر تنفيذ الاقتراح.'),
+    [campaigns, notify, recommendations, refreshAuditLogs, run],
+  );
 
-    if (rec.type === 'scale') {
-      handleUpdateCampaignBudget(rec.campaignId, 1000);
-    } else if (rec.type === 'pause') {
-      handleToggleCampaignStatus(rec.campaignId);
-    }
-
-    triggerToast(`تم تنفيذ اقتراح الذكاء الاصطناعي: ${rec.title} بنجاح!`);
-  };
-
-  const handleSaveThresholds = async (targetRoas: number, targetCpa: number, targetCpl: number, targetHookRate: number) => {
-    const updatedPortfolios = await apiService.updatePortfolioThresholds(selectedPortfolioId, targetRoas, targetCpa, targetCpl, targetHookRate);
-    setPortfolios(updatedPortfolios);
-    const logs = await apiService.getAuditLogs();
-    setAuditLogs(logs);
-    triggerToast('تم تحديث شروط وتقييمات الأخضر/الأحمر للمحفظة الحالية!');
-  };
+  const handleSaveThresholds = useCallback(
+    (targetRoas: number, targetCpa: number, targetCpl: number, targetHookRate: number) =>
+      run(async () => {
+        setPortfolios(
+          await apiService.updatePortfolioThresholds(
+            selectedPortfolioId,
+            targetRoas,
+            targetCpa,
+            targetCpl,
+            targetHookRate,
+          ),
+        );
+        await refreshAuditLogs();
+        notify('تم تحديث شروط وتقييمات الأخضر/الأحمر للمحفظة الحالية!');
+      }, 'تعذر حفظ الشروط.'),
+    [notify, refreshAuditLogs, run, selectedPortfolioId],
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500 selection:text-slate-950">
-      
-      {/* Toast Notification Banner */}
-      {toastMessage && (
-        <div className="fixed bottom-5 left-5 z-50 bg-slate-900 border border-emerald-500/50 text-emerald-300 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom duration-300">
-          <Zap className="w-5 h-5 text-emerald-400 animate-bounce" />
-          <span className="text-xs font-bold">{toastMessage}</span>
+      {appMode === 'demo' && (
+        <div
+          role="status"
+          className="bg-amber-500/10 border-b border-amber-500/30 text-amber-300 text-xs font-bold px-4 py-2 flex items-center justify-center gap-2"
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>
+            وضع العرض التجريبي (Demo Mode) — لا توجد قاعدة بيانات متصلة، وكل التغييرات مؤقتة وتُفقد
+            عند تحديث الصفحة.
+          </span>
         </div>
       )}
 
-      {/* Navigation Header */}
-      <Header 
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-5 left-5 z-50 bg-slate-900 border px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 max-w-[90vw] animate-in slide-in-from-bottom ${
+            toast.tone === 'error'
+              ? 'border-rose-500/50 text-rose-300'
+              : 'border-emerald-500/50 text-emerald-300'
+          }`}
+        >
+          {toast.tone === 'error' ? (
+            <AlertTriangle className="w-5 h-5 text-rose-400" />
+          ) : (
+            <Zap className="w-5 h-5 text-emerald-400" />
+          )}
+          <span className="text-xs font-bold">{toast.text}</span>
+        </div>
+      )}
+
+      <Header
         portfolios={portfolios}
         selectedPortfolioId={selectedPortfolioId}
         onSelectPortfolio={setSelectedPortfolioId}
@@ -224,87 +378,75 @@ export const App: React.FC = () => {
         onTriggerSync={handleTriggerSync}
         activeTab={activeTab}
         onChangeTab={setActiveTab}
+        recommendationCount={portfolioRecommendations.filter((r) => !r.applied).length}
       />
 
-      {/* Main Workspace Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
-        
-        {/* Tab 1: Overview & KPI Dashboard */}
         {activeTab === 'overview' && (
           <>
-            <KPIDashboard 
+            <KPIDashboard
               portfolio={currentPortfolio}
               campaigns={portfolioCampaigns}
               currency={currency}
-              currencyRate={currencyRates[currency]}
+              currencyRate={currencyRate}
             />
-
-            <AnalyticsCharts 
+            <Suspense fallback={<ChartsFallback />}>
+              <AnalyticsCharts
+                campaigns={portfolioCampaigns}
+                currency={currency}
+                currencyRate={currencyRate}
+              />
+            </Suspense>
+            <CampaignsTable
               portfolio={currentPortfolio}
               campaigns={portfolioCampaigns}
               currency={currency}
-              currencyRate={currencyRates[currency]}
-            />
-
-            <CampaignsTable 
-              portfolio={currentPortfolio}
-              campaigns={portfolioCampaigns}
-              currency={currency}
-              currencyRate={currencyRates[currency]}
+              currencyRate={currencyRate}
               onUpdateCampaignBudget={handleUpdateCampaignBudget}
               onToggleCampaignStatus={handleToggleCampaignStatus}
             />
           </>
         )}
 
-        {/* Tab 2: Campaigns Details */}
         {activeTab === 'campaigns' && (
-          <CampaignsTable 
+          <CampaignsTable
             portfolio={currentPortfolio}
             campaigns={portfolioCampaigns}
             currency={currency}
-            currencyRate={currencyRates[currency]}
+            currencyRate={currencyRate}
             onUpdateCampaignBudget={handleUpdateCampaignBudget}
             onToggleCampaignStatus={handleToggleCampaignStatus}
           />
         )}
 
-        {/* Tab 3: Creatives & Video Analytics */}
         {activeTab === 'creatives' && (
-          <CreativeIntelligence 
+          <CreativeIntelligence
             creatives={portfolioCreatives}
             portfolio={currentPortfolio}
             currency={currency}
-            currencyRate={currencyRates[currency]}
+            currencyRate={currencyRate}
           />
         )}
 
-        {/* Tab 4: Leads CRM Pipeline */}
         {activeTab === 'leads' && (
-          <LeadPipelineKanban 
+          <LeadPipelineKanban
             leads={portfolioLeads}
-            portfolio={currentPortfolio}
             currency={currency}
-            currencyRate={currencyRates[currency]}
+            currencyRate={currencyRate}
             onUpdateLeadStatus={handleUpdateLeadStatus}
             onOpenAddLeadModal={() => setIsAddLeadModalOpen(true)}
           />
         )}
 
-        {/* Tab 5: AI Recommendations */}
         {activeTab === 'ai' && (
-          <AIRecommendations 
+          <AIRecommendations
             recommendations={portfolioRecommendations}
-            currency={currency}
-            currencyRate={currencyRates[currency]}
             onApplyRecommendation={handleApplyRecommendation}
           />
         )}
-
       </main>
 
-      {/* Modals */}
-      <CommandPalette 
+      <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
         portfolios={portfolios}
@@ -312,34 +454,29 @@ export const App: React.FC = () => {
         onSelectPortfolio={setSelectedPortfolioId}
       />
 
-      <ThresholdSettingsModal 
+      <ThresholdSettingsModal
         isOpen={isThresholdModalOpen}
         onClose={() => setIsThresholdModalOpen(false)}
         portfolio={currentPortfolio}
         onSaveThresholds={handleSaveThresholds}
-        currency={currency}
-        currencyRate={currencyRates[currency]}
       />
 
-      <AddLeadModal 
+      <AddLeadModal
         isOpen={isAddLeadModalOpen}
         onClose={() => setIsAddLeadModalOpen(false)}
-        portfolio={currentPortfolio}
         campaigns={portfolioCampaigns}
         onAddLead={handleAddLead}
       />
 
-      <AuditLogsModal 
+      <AuditLogsModal
         isOpen={isAuditLogsModalOpen}
         onClose={() => setIsAuditLogsModalOpen(false)}
         logs={auditLogs}
       />
 
-      {/* Footer */}
       <footer className="bg-slate-950 border-t border-slate-900 py-4 text-center text-xs text-slate-500">
-        <p>MediaBuyer OS © 2026 | Enterprise Growth Engine for Media Buyers & Agencies</p>
+        <p>MediaBuyer OS © 2026 | Enterprise Growth Engine for Media Buyers &amp; Agencies</p>
       </footer>
-
     </div>
   );
 };

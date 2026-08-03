@@ -4,8 +4,6 @@ import { Sparkles, Zap, CheckCircle2 } from 'lucide-react';
 
 interface AIRecommendationsProps {
   recommendations: AIRecommendation[];
-  currency: any;
-  currencyRate: any;
   onApplyRecommendation: (id: string) => void;
 }
 
@@ -28,6 +26,12 @@ export const AIRecommendations: React.FC<AIRecommendationsProps> = ({
           </p>
         </div>
       </div>
+
+      {recommendations.length === 0 && (
+        <div className="py-16 text-center text-sm text-slate-400 border border-dashed border-slate-800 rounded-2xl">
+          لا توجد اقتراحات لهذه المحفظة حالياً — كل الحملات ضمن الحدود المعتمدة. ✅
+        </div>
+      )}
 
       {/* Recommendations Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">

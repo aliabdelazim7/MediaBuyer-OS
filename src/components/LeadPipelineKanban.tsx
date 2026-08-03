@@ -1,15 +1,21 @@
-import React from 'react';
-import type { Lead, LeadStatus, Portfolio, Currency } from '../types/mediaBuyer';
+import React, { useMemo } from 'react';
+import type { Lead, LeadStatus, Currency } from '../types/mediaBuyer';
+import { createCurrencyFormatter } from '../lib/format';
 import { UserCheck, CheckCircle2, Phone, Mail, UserPlus } from 'lucide-react';
 
 interface LeadPipelineKanbanProps {
   leads: Lead[];
-  portfolio: Portfolio;
   currency: Currency;
   currencyRate: number;
   onUpdateLeadStatus: (leadId: string, newStatus: LeadStatus, value?: number) => void;
   onOpenAddLeadModal: () => void;
 }
+
+const COLUMNS: { id: LeadStatus; title: string; badgeColor: string; bg: string }[] = [
+  { id: 'registered', title: '📥 مسجل جديد (Registered)', badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30', bg: 'bg-blue-500/5' },
+  { id: 'qualified', title: '💬 تم المتابعة والتأهيل (Qualified)', badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30', bg: 'bg-amber-500/5' },
+  { id: 'closed', title: '✅ تم البيع والاتفاق (Closed / Done)', badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30', bg: 'bg-emerald-500/5' },
+];
 
 export const LeadPipelineKanban: React.FC<LeadPipelineKanbanProps> = ({
   leads,
@@ -18,23 +24,22 @@ export const LeadPipelineKanban: React.FC<LeadPipelineKanbanProps> = ({
   onUpdateLeadStatus,
   onOpenAddLeadModal
 }) => {
-  const formatCurrency = (val: number) => {
-    const converted = val * currencyRate;
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency, maximumFractionDigits: 0 }).format(converted);
-  };
+  const formatCurrency = useMemo(
+    () => createCurrencyFormatter(currency, currencyRate),
+    [currency, currencyRate]
+  );
 
-  const columns: { id: LeadStatus; title: string; badgeColor: string; bg: string }[] = [
-    { id: 'registered', title: '📥 مسجل جديد (Registered)', badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30', bg: 'bg-blue-500/5' },
-    { id: 'qualified', title: '💬 تم المتابعة والتأهيل (Qualified)', badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30', bg: 'bg-amber-500/5' },
-    { id: 'closed', title: '✅ تم البيع والاتفاق (Closed / Done)', badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30', bg: 'bg-emerald-500/5' },
-  ];
+  // Single pass instead of one filter per column.
+  const byStatus = useMemo(() => {
+    const groups: Record<LeadStatus, Lead[]> = { registered: [], qualified: [], closed: [] };
+    for (const lead of leads) groups[lead.status]?.push(lead);
+    return groups;
+  }, [leads]);
 
-  const getLeadsByStatus = (status: LeadStatus) => leads.filter(l => l.status === status);
-
-  // Total closed revenue
-  const totalClosedRevenue = leads
-    .filter(l => l.status === 'closed')
-    .reduce((acc, l) => acc + (l.closedValue || l.estimatedValue || 0), 0);
+  const totalClosedRevenue = useMemo(
+    () => byStatus.closed.reduce((acc, l) => acc + (l.closedValue ?? l.estimatedValue ?? 0), 0),
+    [byStatus]
+  );
 
   return (
     <div className="space-y-6">
@@ -69,8 +74,8 @@ export const LeadPipelineKanban: React.FC<LeadPipelineKanbanProps> = ({
 
       {/* Kanban Board Columns Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {columns.map(col => {
-          const colLeads = getLeadsByStatus(col.id);
+        {COLUMNS.map(col => {
+          const colLeads = byStatus[col.id];
 
           return (
             <div key={col.id} className={`bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3 ${col.bg}`}>
@@ -130,7 +135,7 @@ export const LeadPipelineKanban: React.FC<LeadPipelineKanbanProps> = ({
                       <div className="flex items-center justify-between border-t border-slate-800/80 pt-2 text-xs">
                         <span className="text-slate-400">القيمة المالية:</span>
                         <span className="font-bold text-emerald-400">
-                          {formatCurrency(lead.closedValue || lead.estimatedValue)}
+                          {formatCurrency(lead.closedValue ?? lead.estimatedValue)}
                         </span>
                       </div>
 

@@ -1,4 +1,27 @@
-import type { Portfolio, Campaign, Creative, Lead, AIRecommendation, DailyMetrics } from '../types/mediaBuyer';
+import type { AIRecommendation, AuditLog, Campaign, Creative, DailyMetrics, Lead, Portfolio } from '../types/mediaBuyer';
+
+export const INITIAL_AUDIT_LOGS: AuditLog[] = [
+  {
+    id: 'log-seed-1',
+    userName: 'Ali Abdelazim (Media Buyer)',
+    actionType: 'UPDATE_BUDGET',
+    targetEntity: 'Campaign',
+    entityId: 'camp-101',
+    oldValue: '$600/day',
+    newValue: '$800/day',
+    createdAt: '2026-08-02 08:30'
+  },
+  {
+    id: 'log-seed-2',
+    userName: 'AI Copilot Engine',
+    actionType: 'FATIGUE_ALERT',
+    targetEntity: 'Creative',
+    entityId: 'cr-3',
+    oldValue: 'Healthy',
+    newValue: 'Fatigued (Hook Rate 18%)',
+    createdAt: '2026-08-02 09:15'
+  }
+];
 
 export const INITIAL_PORTFOLIOS: Portfolio[] = [
   {
@@ -220,6 +243,67 @@ export const INITIAL_CAMPAIGNS: Campaign[] = [
     hookRate: 0,
     holdRate: 0,
     fatigueScore: 82
+  },
+  // Portfolio 3 previously had zero campaigns, which left its whole dashboard
+  // blank and orphaned `lead-5` against a non-existent campaign id. These two
+  // rows mirror the account-level figures already declared on `port-3`.
+  {
+    id: 'camp-301',
+    portfolioId: 'port-3',
+    accountId: 'acc-301',
+    accountName: 'Meta Ads - B2B Retargeting',
+    platform: 'meta',
+    name: '💼 Meta_B2B_Retargeting_DemoBooking',
+    status: 'active',
+    dailyBudget: 900,
+    spend: 950,
+    revenue: 3400,
+    cogs: 680,
+    netProfit: 1770,
+    roas: 3.58,
+    impressions: 28000,
+    clicks: 840,
+    ctr: 3.0,
+    cpm: 33.93,
+    cpc: 1.13,
+    conversions: 45,
+    cpa: 21.11,
+    leadsCount: 78,
+    cpl: 12.18,
+    video3sViews: 9800,
+    video15sViews: 3920,
+    hookRate: 35.0,
+    holdRate: 40.0,
+    fatigueScore: 22
+  },
+  {
+    id: 'camp-302',
+    portfolioId: 'port-3',
+    accountId: 'acc-302',
+    accountName: 'TikTok Ads - Tech Solopreneurs',
+    platform: 'tiktok',
+    name: '🎬 TikTok_Solopreneur_ProductDemo',
+    status: 'active',
+    dailyBudget: 500,
+    spend: 450,
+    revenue: 1100,
+    cogs: 220,
+    netProfit: 430,
+    roas: 2.44,
+    impressions: 32000,
+    clicks: 960,
+    ctr: 3.0,
+    cpm: 14.06,
+    cpc: 0.47,
+    conversions: 16,
+    cpa: 28.13,
+    leadsCount: 24,
+    cpl: 18.75,
+    video3sViews: 11200,
+    video15sViews: 3360,
+    hookRate: 35.0,
+    holdRate: 30.0,
+    fatigueScore: 34
   }
 ];
 
@@ -338,7 +422,7 @@ export const INITIAL_LEADS: Lead[] = [
     id: 'lead-5',
     portfolioId: 'port-3',
     campaignId: 'camp-301',
-    campaignName: 'Meta Ads - B2B Retargeting',
+    campaignName: 'Meta_B2B_Retargeting_DemoBooking',
     name: 'Tarek Mostafa',
     email: 'tarek@techagency.io',
     phone: '+20 111 888 9999',

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { Portfolio, Campaign } from '../types/mediaBuyer';
 import { Search, Building2, Target, X, ChevronRight } from 'lucide-react';
 
@@ -19,27 +19,45 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 }) => {
   const [query, setQuery] = useState('');
 
+  // Cmd/Ctrl+K is owned by App so the shortcut can also *open* the palette.
+  // This listener only handles dismissal.
   useEffect(() => {
+    if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        if (isOpen) onClose();
-      }
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
+      if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  // Reset the query each time the palette opens.
+  useEffect(() => {
+    if (isOpen) setQuery('');
+  }, [isOpen]);
+
+  const needle = query.trim().toLowerCase();
+  const filteredPortfolios = useMemo(
+    () => portfolios.filter(p =>
+      p.name.toLowerCase().includes(needle) || p.clientName.toLowerCase().includes(needle)),
+    [portfolios, needle]
+  );
+  const filteredCampaigns = useMemo(
+    () => campaigns.filter(c =>
+      c.name.toLowerCase().includes(needle) || c.accountName.toLowerCase().includes(needle)),
+    [campaigns, needle]
+  );
+
   if (!isOpen) return null;
 
-  const filteredPortfolios = portfolios.filter(p => p.name.toLowerCase().includes(query.toLowerCase()) || p.clientName.toLowerCase().includes(query.toLowerCase()));
-  const filteredCampaigns = campaigns.filter(c => c.name.toLowerCase().includes(query.toLowerCase()) || c.accountName.toLowerCase().includes(query.toLowerCase()));
+  const hasResults = filteredPortfolios.length > 0 || filteredCampaigns.length > 0;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-start justify-center pt-20 px-4 animate-in fade-in duration-200">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="لوحة البحث السريع"
+      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-start justify-center pt-20 px-4 animate-in fade-in duration-200"
+    >
       <div className="bg-slate-900 border border-slate-800 w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden text-slate-100">
         
         {/* Input */}
@@ -58,59 +76,75 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           </button>
         </div>
 
-        {/* Results */}
+        {/* Results — rendered as buttons so they are keyboard-reachable. */}
         <div className="max-h-80 overflow-y-auto p-3 space-y-4 text-xs">
-          
-          {/* Portfolios Section */}
-          <div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-2">المحافظ الإعلانية</div>
-            <div className="space-y-1">
-              {filteredPortfolios.map(p => (
-                <div 
-                  key={p.id}
-                  onClick={() => {
-                    onSelectPortfolio(p.id);
-                    onClose();
-                  }}
-                  className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-800/80 cursor-pointer transition-all"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Building2 className="w-4 h-4 text-emerald-400" />
-                    <div>
-                      <div className="font-bold text-slate-200">{p.name}</div>
-                      <div className="text-[11px] text-slate-400">{p.clientName} ({p.accounts.length} حسابات)</div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-slate-500" />
-                </div>
-              ))}
-            </div>
-          </div>
 
-          {/* Campaigns Section */}
-          <div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-2">الحملات والمجموعات</div>
-            <div className="space-y-1">
-              {filteredCampaigns.map(c => (
-                <div 
-                  key={c.id}
-                  onClick={() => onClose()}
-                  className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-800/80 cursor-pointer transition-all"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Target className="w-4 h-4 text-cyan-400" />
-                    <div>
-                      <div className="font-bold text-slate-200">{c.name}</div>
-                      <div className="text-[11px] text-slate-400">ROAS: {c.roas}x | CPA: ${c.cpa}</div>
-                    </div>
-                  </div>
-                  <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-mono">
-                    {c.platform.toUpperCase()}
-                  </span>
-                </div>
-              ))}
+          {!hasResults && (
+            <div className="py-10 text-center text-slate-400">
+              لا توجد نتائج مطابقة لـ "{query}"
             </div>
-          </div>
+          )}
+
+          {filteredPortfolios.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-2">المحافظ الإعلانية</div>
+              <div className="space-y-1">
+                {filteredPortfolios.map(p => (
+                  <button
+                    type="button"
+                    key={p.id}
+                    onClick={() => {
+                      onSelectPortfolio(p.id);
+                      onClose();
+                    }}
+                    className="w-full text-right flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-800/80 focus:bg-slate-800/80 focus:outline-none transition-all"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Building2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <div>
+                        <div className="font-bold text-slate-200">{p.name}</div>
+                        <div className="text-[11px] text-slate-400">{p.clientName} ({p.accounts.length} حسابات)</div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {filteredCampaigns.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-2">الحملات والمجموعات</div>
+              <div className="space-y-1">
+                {filteredCampaigns.map(c => (
+                  <button
+                    type="button"
+                    key={c.id}
+                    // Selecting a campaign now navigates to its portfolio.
+                    // Previously this only closed the palette, so searching for
+                    // a campaign in another portfolio did nothing at all.
+                    onClick={() => {
+                      onSelectPortfolio(c.portfolioId);
+                      onClose();
+                    }}
+                    className="w-full text-right flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-800/80 focus:bg-slate-800/80 focus:outline-none transition-all"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Target className="w-4 h-4 text-cyan-400 shrink-0" />
+                      <div>
+                        <div className="font-bold text-slate-200">{c.name}</div>
+                        <div className="text-[11px] text-slate-400">ROAS: {c.roas}x | CPA: ${c.cpa}</div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-mono shrink-0">
+                      {c.platform.toUpperCase()}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
         </div>
 

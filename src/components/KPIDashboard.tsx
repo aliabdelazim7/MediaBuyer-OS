@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { Portfolio, Campaign, Currency } from '../types/mediaBuyer';
-import { 
+import { createCurrencyFormatter, formatNumber } from '../lib/format';
+import {
   TrendingUp, 
   DollarSign, 
   Eye, 
@@ -27,41 +28,68 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
 }) => {
   const [showAdvancedMetrics, setShowAdvancedMetrics] = useState(false);
 
-  // Aggregate values
-  const totalSpend = campaigns.reduce((acc, c) => acc + c.spend, 0);
-  const totalRevenue = campaigns.reduce((acc, c) => acc + c.revenue, 0);
-  const totalCogs = campaigns.reduce((acc, c) => acc + c.cogs, 0);
-  const netProfit = totalRevenue - totalSpend - totalCogs;
-  const blendedRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
-  
-  const totalConversions = campaigns.reduce((acc, c) => acc + c.conversions, 0);
-  const trueCpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
-  
-  const totalLeads = campaigns.reduce((acc, c) => acc + c.leadsCount, 0);
-  const trueCpl = totalLeads > 0 ? totalSpend / totalLeads : 0;
+  const formatCurrency = useMemo(
+    () => createCurrencyFormatter(currency, currencyRate),
+    [currency, currencyRate]
+  );
 
-  const totalImpressions = campaigns.reduce((acc, c) => acc + c.impressions, 0);
-  const totalClicks = campaigns.reduce((acc, c) => acc + c.clicks, 0);
-  const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-  const avgCpm = totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0;
+  /**
+   * All portfolio aggregates in a single pass. Previously this was ten separate
+   * `.reduce()` / `.filter()` traversals recomputed on every parent render
+   * (including every toast tick).
+   *
+   * Note these are *blended* figures computed from raw counters, not averages
+   * of per-campaign ratios — averaging ratios would misweight small campaigns.
+   * Hook/hold rate remain unweighted means over video campaigns only, matching
+   * how media buyers read creative health per asset.
+   */
+  const stats = useMemo(() => {
+    let spend = 0, revenue = 0, cogs = 0, conversions = 0, leads = 0;
+    let impressions = 0, clicks = 0, hookSum = 0, holdSum = 0, videoCount = 0;
 
-  const videoCampaigns = campaigns.filter(c => c.video3sViews > 0);
-  const avgHookRate = videoCampaigns.length > 0 
-    ? videoCampaigns.reduce((acc, c) => acc + c.hookRate, 0) / videoCampaigns.length 
-    : 0;
-  const avgHoldRate = videoCampaigns.length > 0 
-    ? videoCampaigns.reduce((acc, c) => acc + c.holdRate, 0) / videoCampaigns.length 
-    : 0;
+    for (const c of campaigns) {
+      spend += c.spend;
+      revenue += c.revenue;
+      cogs += c.cogs;
+      conversions += c.conversions;
+      leads += c.leadsCount;
+      impressions += c.impressions;
+      clicks += c.clicks;
+      if (c.video3sViews > 0) {
+        hookSum += c.hookRate;
+        holdSum += c.holdRate;
+        videoCount++;
+      }
+    }
 
-  // Currency Formatter
-  const formatCurrency = (val: number) => {
-    const converted = val * currencyRate;
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency,
-      maximumFractionDigits: 0
-    }).format(converted);
-  };
+    const div = (a: number, b: number) => (b > 0 ? a / b : 0);
+    return {
+      totalSpend: spend,
+      totalRevenue: revenue,
+      netProfit: revenue - spend - cogs,
+      blendedRoas: div(revenue, spend),
+      totalConversions: conversions,
+      trueCpa: div(spend, conversions),
+      totalLeads: leads,
+      trueCpl: div(spend, leads),
+      totalImpressions: impressions,
+      totalClicks: clicks,
+      avgCtr: div(clicks, impressions) * 100,
+      avgCpm: div(spend, impressions) * 1000,
+      avgCpc: div(spend, clicks),
+      avgHookRate: div(hookSum, videoCount),
+      avgHoldRate: div(holdSum, videoCount),
+      fatiguedCount: campaigns.filter(c => c.fatigueScore >= 70).length,
+    };
+  }, [campaigns]);
+
+  const {
+    totalSpend, totalRevenue, netProfit, blendedRoas, totalConversions, trueCpa,
+    totalLeads, trueCpl, totalImpressions, totalClicks, avgCtr, avgCpm, avgCpc,
+    avgHookRate, avgHoldRate, fatiguedCount,
+  } = stats;
+
+  const crmCloseRate = totalLeads > 0 ? (totalConversions / totalLeads) * 100 : 0;
 
   // Color Coding Evaluator functions based on Portfolio Target Thresholds
   const getRoasStatus = (roas: number) => {
@@ -137,11 +165,18 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
             <div className="text-2xl font-black text-slate-100">
               {formatCurrency(netProfit)}
             </div>
+            {/*
+              A hardcoded "+24% vs last week" used to sit here. There is no
+              per-portfolio historical series to derive it from, so it was a
+              fabricated figure shown beside real money. Replaced with the
+              actual profit margin, which IS derivable from current data.
+            */}
             <div className="flex items-center gap-2 mt-2 text-xs">
-              <span className="flex items-center text-emerald-400 font-bold">
-                <TrendingUp className="w-3.5 h-3.5 ml-0.5" /> +24%
+              <span className={`flex items-center font-bold ${netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                <TrendingUp className="w-3.5 h-3.5 ml-0.5" />
+                {totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0.0'}%
               </span>
-              <span className="text-slate-400">مقارنة بالأسبوع الماضي</span>
+              <span className="text-slate-400">هامش الربح الصافي من الإيراد</span>
             </div>
           </div>
           <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
@@ -222,7 +257,7 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
           </div>
           <div className="mt-3 pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 flex items-center justify-between">
             <span>معدل تحويل CRM:</span>
-            <span className="font-bold text-emerald-400">38% إلى Done</span>
+            <span className="font-bold text-emerald-400">{crmCloseRate.toFixed(1)}% إلى Done</span>
           </div>
         </div>
 
@@ -271,7 +306,7 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
               <div className="text-lg font-extrabold text-slate-100 mt-1">
                 {avgCtr.toFixed(2)}%
               </div>
-              <span className="text-[10px] text-slate-400">{totalClicks.toLocaleString()} نقرة</span>
+              <span className="text-[10px] text-slate-400">{formatNumber(totalClicks)} نقرة</span>
             </div>
 
             {/* CPM */}
@@ -280,14 +315,14 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
               <div className="text-lg font-extrabold text-slate-100 mt-1">
                 {formatCurrency(avgCpm)}
               </div>
-              <span className="text-[10px] text-slate-400">{totalImpressions.toLocaleString()} ظهورا</span>
+              <span className="text-[10px] text-slate-400">{formatNumber(totalImpressions)} ظهورا</span>
             </div>
 
             {/* CPC */}
             <div className="bg-slate-950/70 border border-slate-800 p-3.5 rounded-xl">
               <div className="text-xs text-slate-400">تكلفة النقرة (CPC)</div>
               <div className="text-lg font-extrabold text-slate-100 mt-1">
-                {formatCurrency(totalClicks > 0 ? totalSpend / totalClicks : 0)}
+                {formatCurrency(avgCpc)}
               </div>
               <span className="text-[10px] text-slate-400">متوسط النقرة</span>
             </div>
@@ -295,10 +330,12 @@ export const KPIDashboard: React.FC<KPIDashboardProps> = ({
             {/* Active Fatigue Alerts */}
             <div className="bg-slate-950/70 border border-slate-800 p-3.5 rounded-xl">
               <div className="text-xs text-slate-400">تنبيهات الـ Fatigue</div>
-              <div className="text-lg font-extrabold text-amber-400 mt-1">
-                1 كريتيف
+              <div className={`text-lg font-extrabold mt-1 ${fatiguedCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                {fatiguedCount} حملة
               </div>
-              <span className="text-[10px] text-amber-400/80">يحتاج تغيير الـ Intro</span>
+              <span className="text-[10px] text-amber-400/80">
+                {fatiguedCount > 0 ? 'تحتاج تغيير الـ Intro' : 'لا توجد تنبيهات إجهاد'}
+              </span>
             </div>
 
           </div>

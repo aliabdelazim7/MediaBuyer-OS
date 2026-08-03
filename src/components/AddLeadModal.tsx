@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
-import type { Portfolio, Campaign, Platform } from '../types/mediaBuyer';
-import { UserPlus, X, Check } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import type { Campaign, Platform } from '../types/mediaBuyer';
+import { UserPlus, X, Check, AlertTriangle } from 'lucide-react';
+import { validateLeadFields } from '../services/webhookHandler';
 
 interface AddLeadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  portfolio: Portfolio;
+  /** Campaigns belonging to the currently selected portfolio. */
   campaigns: Campaign[];
   onAddLead: (newLead: {
     name: string;
@@ -18,99 +19,167 @@ interface AddLeadModalProps {
   }) => void;
 }
 
+const EMPTY = {
+  name: '',
+  email: '',
+  phone: '',
+  platform: 'meta' as Platform,
+  estimatedValue: 500,
+  notes: '',
+};
+
 export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   isOpen,
   onClose,
   campaigns,
   onAddLead
 }) => {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [campaignId, setCampaignId] = useState(campaigns[0]?.id || '');
-  const [platform, setPlatform] = useState<Platform>('meta');
-  const [estimatedValue, setEstimatedValue] = useState<number>(500);
-  const [notes, setNotes] = useState('');
+  const [form, setForm] = useState(EMPTY);
+  const [campaignId, setCampaignId] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * The modal never unmounts, so state initialised at first render leaked
+   * across opens: the form kept the previous submission's values, and
+   * `campaignId` kept a campaign id from whichever portfolio was selected
+   * first. Because that stale id matches no <option> in the new portfolio,
+   * the browser displayed the first option while React still held the old id
+   * — submitting attributed the lead to another portfolio's campaign.
+   */
+  useEffect(() => {
+    if (!isOpen) return;
+    setForm(EMPTY);
+    setError(null);
+    setCampaignId(campaigns[0]?.id ?? '');
+  }, [isOpen, campaigns]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
+  const set = <K extends keyof typeof EMPTY>(key: K, value: (typeof EMPTY)[K]) =>
+    setForm((f) => ({ ...f, [key]: value }));
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email) return;
+
+    const problems = validateLeadFields({
+      name: form.name,
+      email: form.email,
+      campaignId,
+      estimatedValue: Number(form.estimatedValue),
+    });
+    if (problems.length > 0) {
+      setError(`تعذر حفظ الليد: ${problems.join('، ')}`);
+      return;
+    }
 
     onAddLead({
-      name,
-      email,
-      phone: phone || '+20 100 000 0000',
+      name: form.name.trim(),
+      email: form.email.trim(),
+      phone: form.phone.trim() || 'غير متاح',
       campaignId,
-      sourcePlatform: platform,
-      estimatedValue: Number(estimatedValue),
-      notes
+      sourcePlatform: form.platform,
+      estimatedValue: Number(form.estimatedValue),
+      notes: form.notes.trim()
     });
 
     onClose();
   };
 
+  const noCampaigns = campaigns.length === 0;
+  const inputClass =
+    'w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-slate-100 font-bold outline-none';
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="تسجيل ليد جديد"
+      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+    >
       <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden text-slate-100 p-6 space-y-5">
-        
-        {/* Header */}
+
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2">
             <UserPlus className="w-5 h-5 text-emerald-400" />
             <h3 className="font-extrabold text-slate-100 text-base">تسجيل Lead جديد في الـ CRM</h3>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-slate-800 rounded-lg text-slate-400">
+          <button onClick={onClose} aria-label="إغلاق" className="p-1 hover:bg-slate-800 rounded-lg text-slate-400">
             <X className="w-4 h-4" />
           </button>
         </div>
 
+        {noCampaigns && (
+          <div className="flex items-center gap-2 text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>لا توجد حملات في هذه المحفظة. أضف حملة أولاً لربط الليد بها.</span>
+          </div>
+        )}
+
+        {error && (
+          <div role="alert" className="flex items-center gap-2 text-xs font-bold text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl p-3">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          
+
           <div>
-            <label className="block font-bold text-slate-300 mb-1">الاسم الكامل:</label>
-            <input 
-              type="text" 
+            <label htmlFor="lead-name" className="block font-bold text-slate-300 mb-1">الاسم الكامل:</label>
+            <input
+              id="lead-name"
+              type="text"
               required
               placeholder="مثال: د. محمد الشريف"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-slate-100 font-bold outline-none"
+              value={form.name}
+              onChange={(e) => set('name', e.target.value)}
+              className={inputClass}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-slate-300 mb-1">البريد الإلكتروني:</label>
-              <input 
-                type="email" 
+              <label htmlFor="lead-email" className="block font-bold text-slate-300 mb-1">البريد الإلكتروني:</label>
+              <input
+                id="lead-email"
+                type="email"
                 required
                 placeholder="m.sharif@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-slate-100 font-bold outline-none"
+                value={form.email}
+                onChange={(e) => set('email', e.target.value)}
+                className={inputClass}
               />
             </div>
             <div>
-              <label className="block font-bold text-slate-300 mb-1">رقم الهاتف/واتساب:</label>
-              <input 
-                type="text" 
+              <label htmlFor="lead-phone" className="block font-bold text-slate-300 mb-1">رقم الهاتف/واتساب:</label>
+              <input
+                id="lead-phone"
+                type="tel"
                 placeholder="+20 101 234 5678"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-slate-100 font-bold outline-none"
+                value={form.phone}
+                onChange={(e) => set('phone', e.target.value)}
+                className={inputClass}
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-slate-300 mb-1">الحملة المصدر:</label>
-              <select 
+              <label htmlFor="lead-campaign" className="block font-bold text-slate-300 mb-1">الحملة المصدر:</label>
+              <select
+                id="lead-campaign"
+                required
                 value={campaignId}
                 onChange={(e) => setCampaignId(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-slate-100 font-bold outline-none cursor-pointer"
+                disabled={noCampaigns}
+                className={`${inputClass} cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {campaigns.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
@@ -118,11 +187,12 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
               </select>
             </div>
             <div>
-              <label className="block font-bold text-slate-300 mb-1">المنصة:</label>
-              <select 
-                value={platform}
-                onChange={(e) => setPlatform(e.target.value as Platform)}
-                className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-slate-100 font-bold outline-none cursor-pointer"
+              <label htmlFor="lead-platform" className="block font-bold text-slate-300 mb-1">المنصة:</label>
+              <select
+                id="lead-platform"
+                value={form.platform}
+                onChange={(e) => set('platform', e.target.value as Platform)}
+                className={`${inputClass} cursor-pointer`}
               >
                 <option value="meta">Meta Ads</option>
                 <option value="tiktok">TikTok Ads</option>
@@ -132,23 +202,29 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
           </div>
 
           <div>
-            <label className="block font-bold text-slate-300 mb-1">القيمة المادية المتوقعة ($):</label>
-            <input 
-              type="number" 
-              value={estimatedValue}
-              onChange={(e) => setEstimatedValue(Number(e.target.value))}
-              className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-slate-100 font-bold outline-none"
+            <label htmlFor="lead-value" className="block font-bold text-slate-300 mb-1">القيمة المادية المتوقعة ($):</label>
+            <input
+              id="lead-value"
+              type="number"
+              min="0"
+              step="1"
+              required
+              value={form.estimatedValue}
+              onChange={(e) => set('estimatedValue', Number(e.target.value))}
+              className={inputClass}
             />
           </div>
 
           <div>
-            <label className="block font-bold text-slate-300 mb-1">ملاحظات العميل:</label>
-            <textarea 
+            <label htmlFor="lead-notes" className="block font-bold text-slate-300 mb-1">ملاحظات العميل:</label>
+            <textarea
+              id="lead-notes"
               rows={2}
+              maxLength={500}
               placeholder="مثال: يفضل التواصل عبر الواتساب في الفترة المسائية..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-slate-100 font-bold outline-none resize-none"
+              value={form.notes}
+              onChange={(e) => set('notes', e.target.value)}
+              className={`${inputClass} resize-none`}
             />
           </div>
 
@@ -162,7 +238,8 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
             </button>
             <button
               type="submit"
-              className="w-1/2 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1 shadow-lg shadow-emerald-500/20"
+              disabled={noCampaigns}
+              className="w-1/2 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1 shadow-lg shadow-emerald-500/20"
             >
               <Check className="w-4 h-4" />
               <span>إضافة الليد الآن</span>

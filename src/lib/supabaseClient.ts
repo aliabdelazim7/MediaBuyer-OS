@@ -1,12 +1,30 @@
-import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { supabaseConfig } from './config';
 
-// Fallback values for development / local demo mode
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://dbqkorvlfvbxxiscomrg.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRicWtvcnZsZnZieHhpc2NvbXJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MjAxNTAwMDAwMH0.mock_key';
+let clientPromise: Promise<SupabaseClient> | null = null;
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-});
+/**
+ * Resolves the Supabase client, or `null` when no credentials are configured
+ * (demo mode).
+ *
+ * The SDK is imported dynamically so its ~200 kB never enters the initial
+ * bundle for the demo/unconfigured path, and is fetched at most once.
+ *
+ * Note: the anon key is public by design. It is only safe because Row Level
+ * Security is enforced on every table — see `src/lib/schema.sql`.
+ */
+export function getSupabase(): Promise<SupabaseClient> | null {
+  const config = supabaseConfig;
+  if (!config) return null;
+
+  clientPromise ??= import('@supabase/supabase-js').then(({ createClient }) =>
+    createClient(config.url, config.anonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+    }),
+  );
+
+  return clientPromise;
+}

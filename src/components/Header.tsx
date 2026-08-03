@@ -1,11 +1,13 @@
 import React from 'react';
+import type { TabId } from '../App';
 import type { Portfolio, Currency } from '../types/mediaBuyer';
-import { 
-  Building2, 
-  Search, 
-  RefreshCw, 
-  Sliders, 
-  UserPlus, 
+import { CURRENCY_RATES } from '../lib/format';
+import {
+  Building2,
+  Search,
+  RefreshCw,
+  Sliders,
+  UserPlus,
   Zap,
   History
 } from 'lucide-react';
@@ -22,9 +24,13 @@ interface HeaderProps {
   onOpenAuditLogsModal: () => void;
   isSyncing: boolean;
   onTriggerSync: () => void;
-  activeTab: 'overview' | 'campaigns' | 'creatives' | 'leads' | 'ai';
-  onChangeTab: (tab: 'overview' | 'campaigns' | 'creatives' | 'leads' | 'ai') => void;
+  activeTab: TabId;
+  onChangeTab: (tab: TabId) => void;
+  /** Number of un-applied AI recommendations for the selected portfolio. */
+  recommendationCount: number;
 }
+
+const CURRENCIES = Object.keys(CURRENCY_RATES) as Currency[];
 
 export const Header: React.FC<HeaderProps> = ({
   portfolios,
@@ -39,9 +45,18 @@ export const Header: React.FC<HeaderProps> = ({
   isSyncing,
   onTriggerSync,
   activeTab,
-  onChangeTab
+  onChangeTab,
+  recommendationCount
 }) => {
   const currentPortfolio = portfolios.find(p => p.id === selectedPortfolioId) || portfolios[0];
+
+  const tabs: { id: TabId; label: string; badge: string | null }[] = [
+    { id: 'overview', label: '📊 نظرة عامة (Dashboard)', badge: null },
+    { id: 'campaigns', label: '🎯 الحملات والإعلانات', badge: `${currentPortfolio.accounts.length} حسابات` },
+    { id: 'creatives', label: '🎥 الكريتيف والـ Hook Rate', badge: 'تحليل الفيديو' },
+    { id: 'leads', label: '📋 تتبع الليدز (CRM)', badge: 'مباشر' },
+    { id: 'ai', label: '🤖 اقتراحات الذكاء الاصطناعي', badge: recommendationCount > 0 ? `${recommendationCount} تنبيهات` : null },
+  ];
 
   return (
     <header className="sticky top-0 z-30 bg-slate-950/80 backdrop-blur-md border-b border-slate-800 text-slate-100">
@@ -120,7 +135,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Currency Switcher */}
             <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-1">
-              {(['USD', 'EGP', 'SAR', 'EUR'] as Currency[]).map(curr => (
+              {CURRENCIES.map(curr => (
                 <button
                   key={curr}
                   onClick={() => onChangeCurrency(curr)}
@@ -166,17 +181,13 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-1 border-t border-slate-800/60 pt-1 pb-2 overflow-x-auto text-sm scrollbar-none">
-          {[
-            { id: 'overview', label: '📊 نظرة عامة (Dashboard)', badge: null },
-            { id: 'campaigns', label: '🎯 الحملات والإعلانات', badge: `${currentPortfolio.accounts.length} حسابات` },
-            { id: 'creatives', label: '🎥 الكريتيف والـ Hook Rate', badge: 'تحليل الفيديو' },
-            { id: 'leads', label: '📋 تتبع الليدز (CRM)', badge: 'مباشر' },
-            { id: 'ai', label: '🤖 اقتراحات الذكاء الاصطناعي', badge: '3 تنبيهات' },
-          ].map(tab => (
+        <div role="tablist" className="flex items-center gap-1 border-t border-slate-800/60 pt-1 pb-2 overflow-x-auto text-sm scrollbar-none">
+          {tabs.map(tab => (
             <button
               key={tab.id}
-              onClick={() => onChangeTab(tab.id as any)}
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              onClick={() => onChangeTab(tab.id)}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-medium transition-all text-xs whitespace-nowrap ${
                 activeTab === tab.id
                   ? 'bg-slate-800 text-emerald-400 border border-slate-700 shadow-sm'
