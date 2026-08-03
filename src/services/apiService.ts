@@ -1,4 +1,5 @@
 import { getSupabase } from '../lib/supabaseClient';
+import { fetchCampaigns, fetchLeads, fetchPortfolios, invokeMetaSync } from './supabaseRepo';
 import type { AuditLog, Campaign, Lead, LeadStatus, Portfolio } from '../types/mediaBuyer';
 import {
   INITIAL_AUDIT_LOGS,
@@ -76,6 +77,59 @@ function addAuditLog(
 }
 
 export const apiService = {
+  /**
+   * Replaces the in-memory store with whatever the backend actually holds,
+   * and reports per-collection provenance so the UI can say which numbers
+   * are real. A collection that comes back empty keeps its fixtures and is
+   * reported as 'degraded' rather than silently shown as live.
+   */
+  async hydrateFromBackend(): Promise<{
+    portfolios: 'live' | 'degraded';
+    campaigns: 'live' | 'degraded';
+    leads: 'live' | 'degraded';
+    data: { portfolios: Portfolio[]; campaigns: Campaign[]; leads: Lead[] };
+  }> {
+    const pending = getSupabase();
+    if (!pending) {
+      return {
+        portfolios: 'degraded',
+        campaigns: 'degraded',
+        leads: 'degraded',
+        data: { portfolios, campaigns, leads },
+      };
+    }
+
+    const supabase = await pending;
+    const [p, c, l] = await Promise.all([
+      fetchPortfolios(supabase).catch(() => null),
+      fetchCampaigns(supabase).catch(() => null),
+      fetchLeads(supabase).catch(() => null),
+    ]);
+
+    if (p) portfolios = p;
+    if (c) campaigns = c;
+    if (l) leads = l;
+
+    return {
+      portfolios: p ? 'live' : 'degraded',
+      campaigns: c ? 'live' : 'degraded',
+      leads: l ? 'live' : 'degraded',
+      data: { portfolios, campaigns, leads },
+    };
+  },
+
+  /**
+   * Runs the server-side Meta sync, then re-reads. The Meta token lives in an
+   * Edge Function secret and is never exposed to this process.
+   */
+  async syncFromMeta(datePreset = 'last_30d') {
+    const pending = getSupabase();
+    if (!pending) throw new Error('لا يوجد اتصال بقاعدة البيانات — المزامنة تحتاج Supabase.');
+    const result = await invokeMetaSync(await pending, datePreset);
+    const hydrated = await this.hydrateFromBackend();
+    return { ...result, hydrated };
+  },
+
   /**
    * Portfolios are the only entity currently read from Supabase. Reads are
    * best-effort: a configuration or network failure falls back to the local

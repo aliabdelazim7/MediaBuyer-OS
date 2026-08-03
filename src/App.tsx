@@ -26,7 +26,6 @@ import { ThresholdSettingsModal } from './components/ThresholdSettingsModal';
 import { AddLeadModal } from './components/AddLeadModal';
 import { AuditLogsModal } from './components/AuditLogsModal';
 import { apiService } from './services/apiService';
-import { webhookHandler } from './services/webhookHandler';
 import { CURRENCY_RATES, createCurrencyFormatter } from './lib/format';
 import { evaluatePortfolio } from './services/recommendationEngine';
 import {
@@ -35,6 +34,8 @@ import {
   initialProvenance,
   isSupabaseConfigured,
 } from './lib/config';
+import type { Session } from '@supabase/supabase-js';
+import { signOut } from './lib/auth';
 import { AlertTriangle, Zap } from 'lucide-react';
 
 /**
@@ -55,7 +56,12 @@ const ChartsFallback = () => (
 
 export type TabId = 'overview' | 'campaigns' | 'creatives' | 'leads' | 'ai';
 
-export const App: React.FC = () => {
+interface AppProps {
+  /** Present only when a backend is configured and the user is signed in. */
+  session?: Session | null;
+}
+
+export const App: React.FC<AppProps> = ({ session = null }) => {
   const [portfolios, setPortfolios] = useState<Portfolio[]>(INITIAL_PORTFOLIOS);
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>('port-1');
   const [campaigns, setCampaigns] = useState<Campaign[]>(INITIAL_CAMPAIGNS);
@@ -83,7 +89,6 @@ export const App: React.FC = () => {
   const [toast, setToast] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
    * Replaces any in-flight toast instead of letting the previous timer clear
@@ -95,11 +100,10 @@ export const App: React.FC = () => {
     toastTimer.current = setTimeout(() => setToast(null), 4000);
   }, []);
 
-  // Clear both timers on unmount so nothing calls setState on a dead tree.
+  // Clear the toast timer on unmount so it cannot setState on a dead tree.
   useEffect(
     () => () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
-      if (syncTimer.current) clearTimeout(syncTimer.current);
     },
     [],
   );
@@ -121,24 +125,35 @@ export const App: React.FC = () => {
    * schema had never been applied.
    */
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    // Re-runs when a session appears: RLS returns nothing until auth.uid()
+    // resolves, so a read attempted before sign-in always looks degraded.
+    if (!isSupabaseConfigured || !session) return;
     let cancelled = false;
 
     apiService
-      .getPortfolios()
-      .then(({ data, degraded }) => {
+      .hydrateFromBackend()
+      .then((r) => {
         if (cancelled) return;
-        setProvenance((p) => ({ ...p, portfolios: degraded ? 'degraded' : 'live' }));
-        if (!degraded) setPortfolios(data);
+        setPortfolios(r.data.portfolios);
+        setCampaigns(r.data.campaigns);
+        setLeads(r.data.leads);
+        setProvenance((p) => ({
+          ...p,
+          portfolios: r.portfolios,
+          campaigns: r.campaigns,
+          leads: r.leads,
+        }));
       })
       .catch(() => {
-        if (!cancelled) setProvenance((p) => ({ ...p, portfolios: 'degraded' }));
+        if (!cancelled) {
+          setProvenance((p) => ({ ...p, portfolios: 'degraded', campaigns: 'degraded' }));
+        }
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [session]);
 
   /**
    * Global Cmd/Ctrl+K. This lives here rather than inside CommandPalette so
@@ -157,6 +172,21 @@ export const App: React.FC = () => {
   }, []);
 
   const currencyRate = CURRENCY_RATES[currency];
+
+  /**
+   * Keeps the selection valid when the portfolio list is replaced.
+   *
+   * The initial selection is the fixture id 'port-1'. Real portfolios carry
+   * UUIDs, so after a sync that id matches nothing: `currentPortfolio` would
+   * fall back to portfolios[0] while `portfolioCampaigns` still filtered on
+   * 'port-1' and returned an empty list — a successful sync would have
+   * rendered an empty dashboard.
+   */
+  useEffect(() => {
+    if (portfolios.length > 0 && !portfolios.some((p) => p.id === selectedPortfolioId)) {
+      setSelectedPortfolioId(portfolios[0].id);
+    }
+  }, [portfolios, selectedPortfolioId]);
 
   const currentPortfolio = useMemo(
     () => portfolios.find((p) => p.id === selectedPortfolioId) ?? portfolios[0],
@@ -212,58 +242,55 @@ export const App: React.FC = () => {
     [notify],
   );
 
+  /**
+   * Real Meta sync. This used to be a `setTimeout` that invented a lead and
+   * added a fixed +$450 to a hardcoded campaign — a simulation that looked
+   * identical to a real refresh.
+   *
+   * The work happens in the `sync-meta` Edge Function so the Meta token
+   * stays server-side; the browser only ever sees campaign rows back.
+   */
   const handleTriggerSync = useCallback(() => {
     if (isSyncing) return;
-    setIsSyncing(true);
-    notify('جاري الاتصال بـ Meta Graph API و Webhooks لتحديث الأرقام اللحظية...');
 
-    const targetCampaign = portfolioCampaigns[0];
-    if (!targetCampaign) {
-      setIsSyncing(false);
-      notify('لا توجد حملات في هذه المحفظة للمزامنة.', 'error');
+    if (!session) {
+      notify('المزامنة محتاجة تسجيل دخول واتصال بقاعدة البيانات.', 'error');
       return;
     }
 
-    syncTimer.current = setTimeout(() => {
-      void run(async () => {
-        // Inbound lead is attributed to a campaign that actually belongs to
-        // the selected portfolio (this used to fall back to a hardcoded
-        // 'camp-101' from an unrelated portfolio).
-        const ingest = await webhookHandler.processInboundLead({
-          portfolioId: selectedPortfolioId,
-          campaignId: targetCampaign.id,
-          campaignName: targetCampaign.name,
-          name: 'م. يوسف النجار',
-          email: 'youssef.n@enterprise.sa',
-          phone: '+966 54 321 9876',
-          sourcePlatform: 'meta',
-          estimatedValue: 850,
-          notes: 'Inbound lead simulated by the live-sync demo',
-        });
+    setIsSyncing(true);
+    notify('جاري السحب من Meta Marketing API...');
 
-        // Metric deltas go through the store so they are not reverted by the
-        // next unrelated mutation, and so every derived metric (ROAS, CPA,
-        // CPL, net profit) is recomputed together.
-        await apiService.applyMetricsDelta(targetCampaign.id, {
-          revenue: 450,
-          spend: 80,
-          conversions: 2,
-        });
+    void run(async () => {
+      try {
+        const result = await apiService.syncFromMeta();
 
-        setCampaigns(await apiService.getCampaigns());
-        setLeads(await apiService.getLeads());
+        setPortfolios(result.hydrated.data.portfolios);
+        setCampaigns(result.hydrated.data.campaigns);
+        setLeads(result.hydrated.data.leads);
+        setProvenance((p) => ({
+          ...p,
+          portfolios: result.hydrated.portfolios,
+          campaigns: result.hydrated.campaigns,
+          leads: result.hydrated.leads,
+        }));
         await refreshAuditLogs();
 
-        notify(
-          ingest.success
-            ? 'تم استلام 1 ليد جديد عبر Webhook وتحديث الـ ROAS والـ Net Profit بنجاح!'
-            : `تعذر استلام الليد: ${ingest.message}`,
-          ingest.success ? 'info' : 'error',
-        );
-      }, 'فشلت المزامنة اللحظية.');
-      setIsSyncing(false);
-    }, 2000);
-  }, [isSyncing, notify, portfolioCampaigns, refreshAuditLogs, run, selectedPortfolioId]);
+        // Currency mismatches and per-account failures are reported rather
+        // than swallowed — a partial sync that looks complete is worse than
+        // a visible warning.
+        if (result.warnings.length > 0) {
+          notify(result.warnings[0], 'error');
+        } else {
+          notify(
+            `تمت مزامنة ${result.campaignsSynced} حملة من ${result.accounts.length} حساب إعلاني.`,
+          );
+        }
+      } finally {
+        setIsSyncing(false);
+      }
+    }, 'فشلت المزامنة مع Meta.');
+  }, [isSyncing, notify, refreshAuditLogs, run, session]);
 
   const handleUpdateCampaignBudget = useCallback(
     (campaignId: string, newBudget: number) =>
@@ -431,6 +458,8 @@ export const App: React.FC = () => {
         activeTab={activeTab}
         onChangeTab={setActiveTab}
         recommendationCount={portfolioRecommendations.filter((r) => r.severity !== 'info').length}
+        userEmail={session?.user.email}
+        onSignOut={() => void signOut()}
       />
 
       <main

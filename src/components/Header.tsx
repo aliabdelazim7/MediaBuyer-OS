@@ -15,6 +15,7 @@ import {
   Video,
   Users,
   Sparkles,
+  LogOut,
   type LucideIcon
 } from 'lucide-react';
 
@@ -34,6 +35,9 @@ interface HeaderProps {
   onChangeTab: (tab: TabId) => void;
   /** Number of un-applied AI recommendations for the selected portfolio. */
   recommendationCount: number;
+  /** Signed-in user's email. Absent in demo mode, where there is no session. */
+  userEmail?: string | null;
+  onSignOut?: () => void;
 }
 
 const CURRENCIES = Object.keys(CURRENCY_RATES) as Currency[];
@@ -70,7 +74,9 @@ export const Header: React.FC<HeaderProps> = ({
   onTriggerSync,
   activeTab,
   onChangeTab,
-  recommendationCount
+  recommendationCount,
+  userEmail,
+  onSignOut
 }) => {
   const currentPortfolio = portfolios.find(p => p.id === selectedPortfolioId) || portfolios[0];
 
@@ -237,6 +243,17 @@ export const Header: React.FC<HeaderProps> = ({
               <UserPlus className="w-4 h-4" aria-hidden="true" />
               <span className="hidden sm:inline">إضافة ليد</span>
             </button>
+
+            {userEmail && onSignOut && (
+              <button
+                onClick={onSignOut}
+                aria-label={`تسجيل الخروج (${userEmail})`}
+                title={userEmail}
+                className={`${ICON_BUTTON} bg-slate-900 border-slate-800 hover:border-rose-500/40 text-slate-300 hover:text-rose-400 cursor-pointer`}
+              >
+                <LogOut className="w-4 h-4" aria-hidden="true" />
+              </button>
+            )}
 
           </div>
         </div>
